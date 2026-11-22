@@ -338,6 +338,37 @@ app.get('/api/mcp/marketplace', async (req, reply) => {
   };
 });
 
+app.get('/api/mcp/marketplace/detail', async (req, reply) => {
+  await requireSession(req, reply);
+  const { slug: rawSlug } = req.query as { slug?: string };
+  const slug = String(rawSlug || '').trim().replace(/^hosted:/, '');
+  const parts = slug.split('/').filter(Boolean);
+  if (parts.length !== 2 || parts.some((part) => !/^[a-zA-Z0-9._-]{1,100}$/.test(part))) {
+    throw new LevhubError('INVALID_INPUT', 'Identitas server katalog tidak valid.', 400);
+  }
+  const url = new URL(`https://api.hostedmcp.org/v1/servers/${encodeURIComponent(parts[0])}/${encodeURIComponent(parts[1])}`);
+  const response = await fetch(url, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(12000) });
+  if (!response.ok) {
+    throw new LevhubError('UPSTREAM_UNAVAILABLE', 'Detail server tidak tersedia dari katalog. Buka repositori untuk melihat petunjuk instalasi.', 502, true);
+  }
+  const data: any = await response.json();
+  const server = data.server || data.item || data;
+  const remotes = Array.isArray(server.remotes) ? server.remotes : Array.isArray(server.install?.remotes) ? server.install.remotes : [];
+  const remote = remotes.find((entry: any) => typeof entry?.url === 'string' || typeof entry?.endpoint === 'string') || null;
+  const endpoint = remote?.url || remote?.endpoint || server.remoteUrl || server.endpoint || null;
+  const packages = Array.isArray(server.packages) ? server.packages : Array.isArray(server.install?.packages) ? server.install.packages : [];
+  return {
+    endpoint: typeof endpoint === 'string' ? endpoint : null,
+    transport: String(remote?.type || server.transport || 'streamable_http').toLowerCase().includes('sse') ? 'sse' : 'streamable_http',
+    auth: Array.isArray(server.auth) ? server.auth : [],
+    remotes,
+    packages,
+    environmentVariables: server.environmentVariables || server.env || [],
+    repositoryUrl: typeof server.repository === 'string' ? server.repository : server.repository?.url || server.repositoryUrl || null,
+    install: server.install || null,
+  };
+});
+
 app.post('/api/mcp/external', async (req, reply) => {
   await requireSession(req, reply);
   const parsed = z.object({ displayName: z.string().min(1).max(100), transport: z.enum(['streamable_http', 'sse']), endpoint: z.string().url(), authType: z.enum(['none', 'bearer', 'header']).default('none'), secret: z.string().optional(), customHeaderName: z.string().optional(), timeoutMs: z.number().int().min(2000).max(60000).optional() }).safeParse(req.body);
