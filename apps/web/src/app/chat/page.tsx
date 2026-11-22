@@ -237,7 +237,7 @@ function ChatWorkspaceInner() {
     setUploadingFiles(true);
     setTurnError(null);
     try {
-      const uploaded = [];
+      const uploaded: Array<{ path: string; name: string; mimeType: string; size: number }> = [];
       for (const file of files) {
         const mimeType = file.type || 'application/octet-stream';
         const signed = await apiFetch<{ signedUrl: string; path: string }>('/api/chat/attachments/sign', {
