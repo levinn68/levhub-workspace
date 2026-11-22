@@ -16,8 +16,8 @@ import {
   createSession,
   decryptSecret,
   encryptSecret,
-  revokeAllSessions,
-  revokeSession,
+  hashCsrfToken,
+  hashSessionToken,
   verifyPasswordHash,
   verifySessionToken,
 } from './security/crypto.js';
@@ -70,9 +70,14 @@ app.setErrorHandler((err, _req, reply) => {
   reply.status(normalized.statusCode).send(normalized.toEnvelope());
 });
 
-function requireSession(req: FastifyRequest, reply: FastifyReply) {
+async function requireSession(req: FastifyRequest, reply: FastifyReply) {
   const token = req.cookies[SESSION_COOKIE_NAME];
-  const session = verifySessionToken(token, config.APP_SESSION_SECRET);
+  const signedSession = verifySessionToken(token, config.APP_SESSION_SECRET);
+  if (!token || !signedSession) {
+    throw new LevhubError('AUTH_REQUIRED', 'Sesi tidak valid atau telah berakhir. Silakan login kembali.', 401);
+  }
+
+  const session = await repo.getActiveSession(hashSessionToken(token));
   if (!session) {
     throw new LevhubError('AUTH_REQUIRED', 'Sesi tidak valid atau telah berakhir. Silakan login kembali.', 401);
   }
@@ -80,7 +85,7 @@ function requireSession(req: FastifyRequest, reply: FastifyReply) {
   // CSRF check for state-changing requests (S-013)
   if (['POST', 'PATCH', 'PUT', 'DELETE'].includes(req.method)) {
     const headerCsrf = req.headers['x-levhub-csrf'];
-    if (typeof headerCsrf !== 'string' || headerCsrf !== session.csrfToken) {
+    if (typeof headerCsrf !== 'string' || hashCsrfToken(headerCsrf) !== session.csrf_token_hash) {
       throw new LevhubError('AUTH_REQUIRED', 'Validasi CSRF gagal. Muat ulang halaman dan coba lagi.', 403);
     }
     const clientIp = req.ip || 'owner';
@@ -90,7 +95,7 @@ function requireSession(req: FastifyRequest, reply: FastifyReply) {
   }
 
   reply.header('X-Correlation-Id', crypto.randomUUID());
-  return session;
+  return { expiresAt: Date.parse(session.expires_at) };
 }
 
 function maskIntegration(item: {
@@ -128,7 +133,7 @@ function maskIntegration(item: {
 app.get('/api/health', async () => {
   const [routerHealth, runtimeHealth, dbHealth] = await Promise.all([
     router.healthCheck(),
-    overdrive.healthCheck(),
+    Promise.resolve({ ok: true, latencyMs: 0, message: 'Runtime eksternal dinonaktifkan' }),
     repo.healthCheck(),
   ]);
 
@@ -172,6 +177,7 @@ app.post('/api/auth/login', async (req, reply) => {
 
   clearLoginFailures(clientKey);
   const { token, record } = createSession(config.APP_SESSION_SECRET, config.SESSION_TTL_HOURS);
+  await repo.createSession(hashSessionToken(token), record.csrfToken, new Date(record.expiresAt).toISOString());
   await repo.recordAuditEvent('login_success', { ip: clientKey });
 
   reply.setCookie(SESSION_COOKIE_NAME, token, {
@@ -194,28 +200,31 @@ app.post('/api/auth/login', async (req, reply) => {
 
 app.get('/api/auth/me', async (req) => {
   const token = req.cookies[SESSION_COOKIE_NAME];
-  const session = verifySessionToken(token, config.APP_SESSION_SECRET);
-  if (!session) {
-    return { authenticated: false };
-  }
+  const signedSession = verifySessionToken(token, config.APP_SESSION_SECRET);
+  if (!token || !signedSession) return { authenticated: false };
+  const session = await repo.getActiveSession(hashSessionToken(token));
+  if (!session) return { authenticated: false };
   return {
     authenticated: true,
     workspaceName: config.WORKSPACE_NAME,
-    csrfToken: session.csrfToken,
-    expiresAt: new Date(session.expiresAt).toISOString(),
+    csrfToken: req.cookies[CSRF_COOKIE_NAME] ?? null,
+    expiresAt: session.expires_at,
   };
 });
 
 app.post('/api/auth/logout', async (req, reply) => {
-  revokeSession(req.cookies[SESSION_COOKIE_NAME]);
+  const token = req.cookies[SESSION_COOKIE_NAME];
+  if (token && verifySessionToken(token, config.APP_SESSION_SECRET)) {
+    await repo.revokeSession(hashSessionToken(token));
+  }
   reply.clearCookie(SESSION_COOKIE_NAME, { path: '/' });
   reply.clearCookie(CSRF_COOKIE_NAME, { path: '/' });
   return { ok: true };
 });
 
 app.post('/api/auth/logout-all', async (req, reply) => {
-  requireSession(req, reply);
-  revokeAllSessions();
+  await requireSession(req, reply);
+  await repo.revokeAllSessions();
   reply.clearCookie(SESSION_COOKIE_NAME, { path: '/' });
   reply.clearCookie(CSRF_COOKIE_NAME, { path: '/' });
   return { ok: true };
@@ -226,7 +235,7 @@ app.post('/api/auth/logout-all', async (req, reply) => {
 // ============================================================================
 
 app.get('/api/models', async (req, reply) => {
-  requireSession(req, reply);
+  await requireSession(req, reply);
   return await router.listModels(false);
 });
 
