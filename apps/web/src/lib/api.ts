@@ -77,7 +77,7 @@ export interface StreamEvent {
 }
 
 export async function streamChatRequest(
-  body: { conversationId?: string; modelId: string; message: string },
+  body: { conversationId?: string; modelId: string; message: string; attachments?: Array<{ path: string; name: string; mimeType: string; size: number }> },
   onEvent: (event: StreamEvent) => void,
   signal?: AbortSignal,
 ): Promise<void> {
