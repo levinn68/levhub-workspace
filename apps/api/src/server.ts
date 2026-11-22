@@ -277,19 +277,19 @@ app.get('/api/mcp/marketplace', async (req, reply) => {
     const data: any = await res.json();
     const rows = Array.isArray(data.items) ? data.items : [];
     const items = rows.map((s: any) => ({
-      id: 'hosted:' + String(s.slug || s.id || s.name),
-      name: String(s.name || s.title || s.slug || 'Unknown MCP'),
-      description: String(s.description || ''),
+      id: 'hosted:' + String(s.owner && s.name ? `${s.owner}/${s.name}` : (s.slug || s.id || s.name || s.title)),
+      name: String(s.title || s.name || s.slug || 'Unknown MCP'),
+      description: String(s.description || s.summary || ''),
       version: String(s.version || s.latestVersion || '—'),
       source: 'Catalog',
-      category: String(s.category || inferMcpCategory([s.name, s.description, s.tags].flat().join(' '))),
-      repositoryUrl: s.repository || s.repositoryUrl || s.repo || null,
-      websiteUrl: s.url || s.website || null,
+      category: String(s.category || inferMcpCategory([s.name, s.description, s.summary, s.tags].flat().join(' '))),
+      repositoryUrl: typeof s.repo === 'string' ? s.repo : (typeof s.repository === 'string' ? s.repository : s.repository?.url || s.repositoryUrl || null),
+      websiteUrl: s.homepage || s.url || s.website || null,
       transport: Array.isArray(s.transports) ? s.transports : (s.transport ? [String(s.transport)] : []),
-      auth: Array.isArray(s.auth) ? s.auth : (s.authType ? [String(s.authType)] : []),
+      auth: Array.isArray(s.auth) ? s.auth : (typeof s.auth === 'string' ? [s.auth] : (s.authType ? [String(s.authType)] : [])),
       install: s,
-      verified: Boolean(s.verified || s.checks?.passed),
-      popularity: { stars: Number(s.stars || s.githubStars || 0), downloads: Number(s.weeklyDownloads || s.downloads || 0) },
+      verified: Boolean(s.verified || s.checks?.verified || s.checks?.passed),
+      popularity: { stars: Number(s.stars || s.githubStars || 0), downloads: Number(s.downloads30d || s.weeklyDownloads || s.downloads || 0) },
     } as MarketplaceEntry & { popularity: { stars: number; downloads: number } }));
     return { items, total: Number(data.total || items.length), nextCursor: data.nextCursor || null };
   })());
@@ -351,21 +351,31 @@ app.get('/api/mcp/marketplace/detail', async (req, reply) => {
   if (!response.ok) {
     throw new LevhubError('UPSTREAM_UNAVAILABLE', 'Detail server tidak tersedia dari katalog. Buka repositori untuk melihat petunjuk instalasi.', 502, true);
   }
-  const data: any = await response.json();
-  const server = data.server || data.item || data;
-  const remotes = Array.isArray(server.remotes) ? server.remotes : Array.isArray(server.install?.remotes) ? server.install.remotes : [];
-  const remote = remotes.find((entry: any) => typeof entry?.url === 'string' || typeof entry?.endpoint === 'string') || null;
-  const endpoint = remote?.url || remote?.endpoint || server.remoteUrl || server.endpoint || null;
-  const packages = Array.isArray(server.packages) ? server.packages : Array.isArray(server.install?.packages) ? server.install.packages : [];
+  const server: any = await response.json();
+  const packages = Array.isArray(server.packages) ? server.packages : [];
+  const remote = packages.find((entry: any) =>
+    String(entry?.transport || '').toLowerCase().includes('remote')
+    || String(entry?.transport || '').toLowerCase().includes('http')
+    || String(entry?.type || '').toLowerCase() === 'remote'
+    || /^https:\/\//i.test(String(entry?.identifier || ''))
+  ) || null;
+  const endpoint = remote?.identifier || remote?.url || remote?.endpoint
+    || server.remoteEndpoint || server.remoteUrl || server.endpoint || null;
+  const auth = Array.isArray(server.auth) ? server.auth
+    : typeof server.auth === 'string' ? [server.auth] : [];
+  const envVars = Array.isArray(server.envVars) ? server.envVars
+    : Array.isArray(server.environmentVariables) ? server.environmentVariables : [];
   return {
-    endpoint: typeof endpoint === 'string' ? endpoint : null,
-    transport: String(remote?.type || server.transport || 'streamable_http').toLowerCase().includes('sse') ? 'sse' : 'streamable_http',
-    auth: Array.isArray(server.auth) ? server.auth : [],
-    remotes,
+    endpoint: typeof endpoint === 'string' && /^https:\/\//i.test(endpoint) ? endpoint : null,
+    transport: String(remote?.transport || remote?.type || 'streamable_http').toLowerCase().includes('sse') ? 'sse' : 'streamable_http',
+    auth,
+    remotes: [],
     packages,
-    environmentVariables: server.environmentVariables || server.env || [],
-    repositoryUrl: typeof server.repository === 'string' ? server.repository : server.repository?.url || server.repositoryUrl || null,
+    environmentVariables: envVars,
+    repositoryUrl: typeof server.repo === 'string' ? server.repo : typeof server.repository === 'string' ? server.repository : server.repository?.url || server.repositoryUrl || null,
     install: server.install || null,
+    live: server.live || null,
+    checks: server.checks || null,
   };
 });
 
