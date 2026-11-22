@@ -28,6 +28,22 @@ export class LevhubRepository {
     return this.client !== null;
   }
 
+  async createChatAttachmentUpload(path: string): Promise<{ signedUrl: string; token: string; path: string }> {
+    const { data, error } = await this.db().storage
+      .from(this.config.SUPABASE_CHAT_BUCKET)
+      .createSignedUploadUrl(path, { upsert: false });
+    if (error || !data) throw new LevhubError('UPSTREAM_UNAVAILABLE', 'Gagal menyiapkan upload file ke Storage.', 502, true);
+    return { signedUrl: data.signedUrl, token: data.token, path: data.path };
+  }
+
+  async createChatAttachmentReadUrl(path: string): Promise<string> {
+    const { data, error } = await this.db().storage
+      .from(this.config.SUPABASE_CHAT_BUCKET)
+      .createSignedUrl(path, 3600);
+    if (error || !data) throw new LevhubError('UPSTREAM_UNAVAILABLE', 'Gagal membuat akses sementara untuk lampiran.', 502, true);
+    return data.signedUrl;
+  }
+
   private db(): SupabaseClient {
     if (!this.client) {
       throw new LevhubError(
