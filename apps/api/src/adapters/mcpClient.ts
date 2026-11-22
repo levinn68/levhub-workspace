@@ -1,6 +1,16 @@
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
-import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+/**
+ * Single import surface for the official MCP client.
+ *
+ * IMPORTANT: `@modelcontextprotocol/client` exposes everything from its root
+ * entry point. There are no `./client/*` subpaths — earlier commits in this
+ * branch wrongly used `@modelcontextprotocol/sdk/client/*.js`, which is what
+ * failed CI with TS2307 "Cannot find module".
+ */
+import {
+  Client,
+  SSEClientTransport,
+  StreamableHTTPClientTransport,
+} from '@modelcontextprotocol/client';
 
 export { Client, SSEClientTransport, StreamableHTTPClientTransport };
 
