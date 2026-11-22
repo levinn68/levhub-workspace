@@ -5,7 +5,7 @@ import { LevhubError } from '../security/errors.js';
 
 export interface ChatCompletionMessage {
   role: 'system' | 'user' | 'assistant' | 'tool';
-  content: string | null;
+  content: string | null | Array<Record<string, unknown>>;
   tool_calls?: Array<{
     id: string;
     type: 'function';
