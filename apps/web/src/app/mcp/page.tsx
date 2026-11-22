@@ -18,7 +18,7 @@ interface ExternalMcpItem {
 interface MarketplaceItem {
   id: string; name: string; description: string; version: string; source: string; category: string;
   repositoryUrl: string | null; websiteUrl: string | null; transport: string[]; auth: string[];
-  install: any; verified: boolean;
+  install: any; verified: boolean; popularity?: { stars?: number; downloads?: number };
 }
 interface RuntimeMcpItem {
   id: string;
@@ -44,6 +44,8 @@ export default function McpHubPage() {
   const [customHeaderName, setCustomHeaderName] = useState('Authorization');
   const [marketQuery, setMarketQuery] = useState('');
   const [marketProvider, setMarketProvider] = useState('all');
+  const [marketSort, setMarketSort] = useState('quality');
+  const [marketCursor, setMarketCursor] = useState<string | null>(null);
   const [marketCategory, setMarketCategory] = useState('All');
   const [marketItems, setMarketItems] = useState<MarketplaceItem[]>([]);
   const [marketCategories, setMarketCategories] = useState<string[]>(['All']);
@@ -65,15 +67,16 @@ export default function McpHubPage() {
   }
 
   useEffect(() => { loadMcp(); }, []);
-  useEffect(() => { if (tab === 'marketplace') loadMarketplace(); }, [tab, marketQuery, marketCategory, marketProvider]);
+  useEffect(() => { if (tab === 'marketplace') loadMarketplace(); }, [tab, marketQuery, marketCategory, marketProvider, marketSort]);
 
 
   async function loadMarketplace() {
     setMarketLoading(true);
     try {
-      const params = new URLSearchParams({ q: marketQuery, category: marketCategory, provider: marketProvider, limit: '100' });
-      const data = await apiFetch<{ items: MarketplaceItem[]; categories: string[]; total: number; providerStatus?: { partial?: boolean } }>(`/api/mcp/marketplace?${params.toString()}`);
+      const params = new URLSearchParams({ q: marketQuery, category: marketCategory, provider: marketProvider, sort: marketSort, limit: '50' });
+      const data = await apiFetch<{ items: MarketplaceItem[]; categories: string[]; total: number; nextCursor?: string | null; providerStatus?: { partial?: boolean } }>(`/api/mcp/marketplace?${params.toString()}`);
       setMarketItems(data.items || []);
+      setMarketCursor(data.nextCursor || null);
       setMarketCategories(data.categories || ['All']);
       setMarketTotal(data.total || 0);
       setMarketPartial(Boolean(data.providerStatus?.partial));
@@ -171,9 +174,7 @@ export default function McpHubPage() {
               </div>
               <div className="mt-4 grid gap-2 sm:grid-cols-[1fr_190px]">
                 <div className="relative"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"/><input value={marketQuery} onChange={e => setMarketQuery(e.target.value)} placeholder="Cari GitHub, database, browser..." className="glass-input w-full rounded-xl py-3 pl-10 pr-3 text-sm"/></div>
-                <select value={marketProvider} onChange={e => setMarketProvider(e.target.value)} className="glass-input rounded-xl px-3 py-2 text-xs text-white">
-                  <option value="all" className="bg-slate-900">Semua provider</option><option value="official" className="bg-slate-900">Official Registry</option><option value="community" className="bg-slate-900">Community Directory</option><option value="github" className="bg-slate-900">GitHub</option>
-                </select>
+                <div className="grid grid-cols-2 gap-2"><select value={marketProvider} onChange={e => setMarketProvider(e.target.value)} className="glass-input rounded-xl px-3 py-2 text-xs text-white"><option value="all" className="bg-slate-900">Semua sumber</option><option value="hosted" className="bg-slate-900">Katalog luas</option><option value="official" className="bg-slate-900">Registry</option><option value="github" className="bg-slate-900">GitHub</option></select><select value={marketSort} onChange={e => setMarketSort(e.target.value)} className="glass-input rounded-xl px-3 py-2 text-xs text-white"><option value="quality" className="bg-slate-900">Paling populer</option><option value="stars" className="bg-slate-900">GitHub stars</option><option value="downloads" className="bg-slate-900">Downloads</option><option value="new" className="bg-slate-900">Terbaru</option></select></div>
               </div>
               <div className="mt-3 flex flex-wrap gap-2">
                 {marketCategories.map(cat => <button key={cat} type="button" onClick={() => setMarketCategory(cat)} className={`rounded-full px-3 py-1.5 text-[11px] ${marketCategory === cat ? 'bg-indigo-300/20 text-indigo-100 ring-1 ring-indigo-200/30' : 'bg-white/[.05] text-slate-400 hover:bg-white/10'}`}>{cat}</button>)}
@@ -185,12 +186,12 @@ export default function McpHubPage() {
                 {marketItems.map(item => <article key={item.id} className="glass-card flex min-w-0 flex-col rounded-2xl p-4 transition hover:border-indigo-200/30">
                   <div className="flex items-start justify-between gap-2"><div className="min-w-0"><h3 className="truncate text-sm font-semibold text-white">{item.name}</h3><p className="mt-1 text-[10px] text-indigo-200">{item.category}</p></div><span className="shrink-0 rounded-full bg-white/[.06] px-2 py-1 text-[9px] text-slate-300">{item.verified ? 'Registry active' : 'Community'}</span></div>
                   <p className="mt-3 line-clamp-3 flex-1 text-xs leading-5 text-slate-400">{item.description}</p>
-                  <div className="mt-3 flex flex-wrap gap-1.5"><span className="rounded-md bg-white/[.06] px-2 py-1 text-[9px] text-slate-300">{item.source}</span><span className="rounded-md bg-white/[.06] px-2 py-1 text-[9px] text-slate-300">{item.version}</span>{item.transport.slice(0,2).map(t => <span key={t} className="rounded-md bg-white/[.06] px-2 py-1 text-[9px] text-slate-300">{t}</span>)}</div>
+                  <div className="mt-3 flex flex-wrap gap-1.5"><span className="rounded-md bg-white/[.06] px-2 py-1 text-[9px] text-slate-300">{item.version}</span>{item.popularity?.stars ? <span className="rounded-md bg-white/[.06] px-2 py-1 text-[9px] text-slate-300">★ {item.popularity.stars.toLocaleString()}</span> : null}{item.popularity?.downloads ? <span className="rounded-md bg-white/[.06] px-2 py-1 text-[9px] text-slate-300">{item.popularity.downloads.toLocaleString()} downloads</span> : null}{item.transport.slice(0,2).map(t => <span key={t} className="rounded-md bg-white/[.06] px-2 py-1 text-[9px] text-slate-300">{t}</span>)}</div>
                   <div className="mt-4 flex flex-wrap gap-2">{item.repositoryUrl && <a href={item.repositoryUrl} target="_blank" rel="noreferrer" className="rounded-lg bg-white/10 px-3 py-2 text-[10px] text-slate-200 hover:bg-white/15">Repository ↗</a>}{item.websiteUrl && <a href={item.websiteUrl} target="_blank" rel="noreferrer" className="rounded-lg bg-white/10 px-3 py-2 text-[10px] text-slate-200 hover:bg-white/15">Docs ↗</a>}</div>
                 </article>)}
               </div>
             )}
-            <p className="text-[11px] leading-5 text-slate-500">Discovery mengambil metadata dari beberapa katalog. Belum semua listing menyediakan remote HTTP endpoint; server berbasis stdio perlu proses runtime/host tersendiri. Jangan masukkan token sebelum memastikan endpoint dan publisher benar.</p>
+            <div className="flex flex-wrap items-center justify-between gap-3"><p className="max-w-2xl text-[11px] leading-5 text-slate-500">Urutan populer memakai sinyal publik seperti stars dan download, bukan data pemakaian privat. Server lokal/stdio tetap memerlukan runtime host.</p>{marketCursor ? <button type="button" onClick={async () => { setMarketLoading(true); try { const params = new URLSearchParams({ q: marketQuery, category: marketCategory, provider: "hosted", sort: marketSort, limit: "50", cursor: marketCursor }); const data = await apiFetch<{items: MarketplaceItem[]; nextCursor?: string | null}>("/api/mcp/marketplace?" + params.toString()); setMarketItems(prev => [...prev, ...(data.items || [])]); setMarketCursor(data.nextCursor || null); } catch (err) { setFeedback(err instanceof Error ? err.message : "Gagal memuat halaman berikutnya."); } finally { setMarketLoading(false); } }} className="rounded-xl bg-white/10 px-4 py-2 text-xs text-white hover:bg-white/15">Muat lebih banyak</button> : null}</div>
           </section>
         ) : tab === 'external' ? (
           <div className="grid gap-5 lg:grid-cols-3">
