@@ -1,6 +1,6 @@
 'use client';
 
-import React, { Suspense, useEffect, useRef, useState } from 'react';
+import React, { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import {
   Send,
@@ -27,6 +27,13 @@ interface ModelItem {
   available: boolean;
 }
 
+interface AttachmentMeta {
+  path: string;
+  name: string;
+  mimeType: string;
+  size: number;
+}
+
 interface ChatMessage {
   id: string;
   role: 'user' | 'assistant' | 'tool' | 'system';
@@ -47,6 +54,28 @@ interface ToolActivity {
   summary?: string;
 }
 
+/** Signed upload target returned by POST /api/chat/attachments/sign. */
+interface SignedUpload {
+  signedUrl: string;
+  token?: string;
+  path: string;
+  name?: string;
+  mimeType?: string;
+  size?: number;
+}
+
+const MAX_ATTACHMENTS = 8;
+const DISPLAY_ACCEPT =
+  'image/jpeg,image/png,image/webp,image/gif,image/heic,image/heif,video/mp4,video/webm,video/quicktime,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.md,.json,.zip';
+
+function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  const exponent = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  const value = bytes / Math.pow(1024, exponent);
+  return `${value >= 10 || exponent === 0 ? Math.round(value) : value.toFixed(1)} ${units[exponent]}`;
+}
+
 function ChatWorkspaceInner() {
   const searchParams = useSearchParams();
   const initialConvId = searchParams.get('id') || undefined;
@@ -55,12 +84,14 @@ function ChatWorkspaceInner() {
   const [models, setModels] = useState<ModelItem[]>([]);
   const [selectedModel, setSelectedModel] = useState<string>('');
   const [modelsError, setModelsError] = useState<string | null>(null);
+  const [modelsLoading, setModelsLoading] = useState(true);
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [toolActivities, setToolActivities] = useState<ToolActivity[]>([]);
   const [draft, setDraft] = useState('');
-  const [pendingAttachments, setPendingAttachments] = useState<Array<{ path: string; name: string; mimeType: string; size: number }>>([]);
+  const [pendingAttachments, setPendingAttachments] = useState<AttachmentMeta[]>([]);
   const [uploadingFiles, setUploadingFiles] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<string>('');
   const [collaborationMode, setCollaborationMode] = useState(false);
   const [collaboratorModel, setCollaboratorModel] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -68,21 +99,32 @@ function ChatWorkspaceInner() {
   const [turnError, setTurnError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
+  /**
+   * Root cause fixed here: this effect previously depended on [selectedModel],
+   * so every model change refetched the catalogue, and the fetch itself called
+   * setSelectedModel() — re-triggering the effect (request storm / render loop).
+   * It now runs once on mount and uses functional updates, plus a manual reload
+   * action for the error state.
+   */
+  const loadModels = useCallback(async () => {
+    setModelsLoading(true);
+    setModelsError(null);
+    try {
+      const res = await apiFetch<{ items: ModelItem[] }>('/api/models');
+      setModels(res.items);
+      const available = res.items.filter((m) => m.available);
+      setSelectedModel((current) => current || available[0]?.id || '');
+      setCollaboratorModel((current) => current || available[1]?.id || available[0]?.id || '');
+    } catch (err) {
+      setModelsError(err instanceof Error ? err.message : 'Gagal memuat katalog model dari Router.');
+    } finally {
+      setModelsLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
-    apiFetch<{ items: ModelItem[] }>('/api/models')
-      .then((res) => {
-        setModels(res.items);
-        const available = res.items.filter((m) => m.available);
-        if (available.length > 1 && !collaboratorModel) setCollaboratorModel(available[1].id);
-        const firstAvailable = res.items.find((m) => m.available);
-        if (firstAvailable && !selectedModel) {
-          setSelectedModel(firstAvailable.id);
-        }
-      })
-      .catch((err) => {
-        setModelsError(err instanceof Error ? err.message : 'Gagal memuat katalog model dari Router.');
-      });
-  }, [selectedModel]);
+    void loadModels();
+  }, [loadModels]);
 
   useEffect(() => {
     if (!initialConvId) return;
@@ -125,7 +167,9 @@ function ChatWorkspaceInner() {
 
   async function handleSend(e?: React.FormEvent) {
     if (e) e.preventDefault();
-    const text = draft.trim() || (pendingAttachments.length ? 'Tolong analisis lampiran yang saya kirim.' : '');
+    const text = draft.trim();
+    // Attachment-only messages are valid: the API accepts an empty message when
+    // files are present, so the UI no longer injects a fake prompt.
     if ((!text && pendingAttachments.length === 0) || !selectedModel || isStreaming || uploadingFiles) return;
 
     setTurnError(null);
@@ -219,6 +263,7 @@ function ChatWorkspaceInner() {
       if ((err as Error).name !== 'AbortError') {
         setTurnError(err instanceof Error ? err.message : 'Gagal mengirim pesan.');
         setDraft(text); // Preserve draft on recoverable error (UX Section 5)
+        setPendingAttachments(attachmentsToSend); // Do not lose uploaded files
       }
     } finally {
       setIsStreaming(false);
@@ -226,36 +271,65 @@ function ChatWorkspaceInner() {
     }
   }
 
+  /**
+   * Uploads files to private Supabase Storage using the signed upload URL.
+   * Supabase's signed upload endpoint expects a PUT of raw bytes with the
+   * `x-upsert` header and the upload token as Authorization when provided.
+   * Each file reports its own progress; failures do not abort the whole batch.
+   */
+  async function uploadOneFile(file: File, index: number, total: number): Promise<AttachmentMeta | null> {
+    const mimeType = file.type || 'application/octet-stream';
+    setUploadProgress(`Mengunggah ${index + 1}/${total}: ${file.name}`);
+
+    const signed = await apiFetch<SignedUpload>('/api/chat/attachments/sign', {
+      method: 'POST',
+      body: JSON.stringify({ name: file.name, mimeType, size: file.size }),
+    });
+
+    const headers: Record<string, string> = {
+      'Content-Type': mimeType,
+      'x-upsert': 'false',
+    };
+    if (signed.token) headers.Authorization = `Bearer ${signed.token}`;
+
+    const response = await fetch(signed.signedUrl, { method: 'PUT', headers, body: file });
+    if (!response.ok) {
+      throw new Error(`Upload ${file.name} gagal (HTTP ${response.status}).`);
+    }
+    return { path: signed.path, name: file.name, mimeType, size: file.size };
+  }
+
   async function handleFilesSelected(event: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(event.target.files || []);
     event.target.value = '';
     if (!files.length) return;
-    if (pendingAttachments.length + files.length > 8) {
-      setTurnError('Maksimal 8 lampiran per pesan.');
+
+    const room = MAX_ATTACHMENTS - pendingAttachments.length;
+    if (room <= 0) {
+      setTurnError(`Maksimal ${MAX_ATTACHMENTS} lampiran per pesan.`);
       return;
     }
+    const accepted = files.slice(0, room);
+    const skipped = files.length - accepted.length;
+
     setUploadingFiles(true);
-    setTurnError(null);
+    setTurnError(skipped > 0 ? `${skipped} file dilewati karena batas ${MAX_ATTACHMENTS} lampiran.` : null);
+
+    const uploaded: AttachmentMeta[] = [];
+    const failures: string[] = [];
     try {
-      const uploaded: Array<{ path: string; name: string; mimeType: string; size: number }> = [];
-      for (const file of files) {
-        const mimeType = file.type || 'application/octet-stream';
-        const signed = await apiFetch<{ signedUrl: string; path: string }>('/api/chat/attachments/sign', {
-          method: 'POST',
-          body: JSON.stringify({ name: file.name, mimeType, size: file.size }),
-        });
-        const response = await fetch(signed.signedUrl, {
-          method: 'PUT',
-          headers: { 'Content-Type': mimeType },
-          body: file,
-        });
-        if (!response.ok) throw new Error(`Upload ${file.name} gagal (HTTP ${response.status}).`);
-        uploaded.push({ path: signed.path, name: file.name, mimeType, size: file.size });
+      for (let i = 0; i < accepted.length; i++) {
+        try {
+          const result = await uploadOneFile(accepted[i], i, accepted.length);
+          if (result) uploaded.push(result);
+        } catch (err) {
+          failures.push(err instanceof Error ? err.message : `Gagal mengunggah ${accepted[i].name}.`);
+        }
       }
-      setPendingAttachments((prev) => [...prev, ...uploaded]);
-    } catch (err) {
-      setTurnError(err instanceof Error ? err.message : 'Gagal mengunggah lampiran.');
+      if (uploaded.length > 0) setPendingAttachments((prev) => [...prev, ...uploaded].slice(0, MAX_ATTACHMENTS));
+      if (failures.length > 0) setTurnError(failures.join(' '));
     } finally {
+      setUploadProgress('');
       setUploadingFiles(false);
     }
   }
@@ -293,7 +367,8 @@ function ChatWorkspaceInner() {
         onChange={(e) => setSelectedModel(e.target.value)}
         className="glass-input max-w-[220px] truncate rounded-xl px-3 py-1.5 text-xs text-slate-100"
       >
-        {models.length === 0 && <option value="">Memuat model...</option>}
+        {modelsLoading && <option value="">Memuat model...</option>}
+        {!modelsLoading && models.length === 0 && <option value="">Tidak ada model tersedia</option>}
         {models.map((m) => (
           <option key={m.id} value={m.id} disabled={!m.available} className="bg-slate-900">
             {m.displayName} {!m.available ? '(Tidak tersedia)' : ''}
@@ -314,7 +389,7 @@ function ChatWorkspaceInner() {
             </span>
             <button
               type="button"
-              onClick={() => window.location.reload()}
+              onClick={() => void loadModels()}
               className="inline-flex items-center gap-1 rounded-lg bg-amber-500/20 px-2.5 py-1 font-medium hover:bg-amber-500/30"
             >
               <RefreshCw className="h-3.5 w-3.5" /> Muat Ulang
@@ -438,8 +513,20 @@ function ChatWorkspaceInner() {
         {/* Composer */}
         <div className="glass-panel rounded-2xl p-3">
           <div className="mb-2 flex flex-wrap items-center gap-2">
-            <input ref={fileInputRef} type="file" multiple accept="image/*,video/mp4,video/webm,video/quicktime,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.md,.json,.zip" className="hidden" onChange={handleFilesSelected} />
-            <button type="button" onClick={() => fileInputRef.current?.click()} disabled={uploadingFiles || isStreaming} className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-200 hover:bg-white/10 disabled:opacity-40">
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              accept={DISPLAY_ACCEPT}
+              className="hidden"
+              onChange={handleFilesSelected}
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploadingFiles || isStreaming || pendingAttachments.length >= MAX_ATTACHMENTS}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-200 hover:bg-white/10 disabled:opacity-40"
+            >
               <Paperclip className="h-3.5 w-3.5" /> {uploadingFiles ? 'Mengunggah...' : 'Lampirkan file'}
             </button>
             <button type="button" onClick={() => setCollaborationMode((v) => !v)} className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs ${collaborationMode ? 'border-indigo-300/40 bg-indigo-400/20 text-indigo-100' : 'border-white/10 bg-white/5 text-slate-300'}`}>
@@ -451,17 +538,38 @@ function ChatWorkspaceInner() {
                 {models.filter((m) => m.available && m.id !== selectedModel).map((m) => <option key={m.id} value={m.id} className="bg-slate-900">{m.displayName}</option>)}
               </select>
             )}
+            <span className="ml-auto text-[10px] text-slate-500">
+              {pendingAttachments.length}/{MAX_ATTACHMENTS} lampiran
+            </span>
           </div>
+
+          {uploadProgress && (
+            <p className="mb-2 text-[10px] text-sky-200" aria-live="polite">{uploadProgress}</p>
+          )}
+
           {pendingAttachments.length > 0 && (
             <div className="mb-2 flex flex-wrap gap-2">
-              {pendingAttachments.map((file) => (
-                <span key={file.path} className="inline-flex max-w-full items-center gap-1.5 rounded-lg border border-sky-300/20 bg-sky-400/10 px-2.5 py-1.5 text-[10px] text-sky-100">
-                  <FileText className="h-3 w-3 shrink-0" /><span className="max-w-[180px] truncate">{file.name}</span>
-                  <button type="button" aria-label={`Hapus ${file.name}`} onClick={() => setPendingAttachments((prev) => prev.filter((item) => item.path !== file.path))}><X className="h-3 w-3" /></button>
-                </span>
-              ))}
+              {pendingAttachments.map((file) => {
+                const isImage = file.mimeType.startsWith('image/');
+                return (
+                  <span key={file.path} className="inline-flex max-w-full items-center gap-1.5 rounded-lg border border-sky-300/20 bg-sky-400/10 px-2.5 py-1.5 text-[10px] text-sky-100">
+                    <FileText className="h-3 w-3 shrink-0" />
+                    <span className="max-w-[160px] truncate">{file.name}</span>
+                    <span className="shrink-0 text-[9px] text-sky-300/70">{formatBytes(file.size)}</span>
+                    {isImage && <span className="shrink-0 rounded bg-sky-300/20 px-1 text-[9px]">IMG</span>}
+                    <button
+                      type="button"
+                      aria-label={`Hapus ${file.name}`}
+                      onClick={() => setPendingAttachments((prev) => prev.filter((item) => item.path !== file.path))}
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </span>
+                );
+              })}
             </div>
           )}
+
           <form onSubmit={handleSend} className="flex items-end gap-2">
           <textarea
             rows={2}

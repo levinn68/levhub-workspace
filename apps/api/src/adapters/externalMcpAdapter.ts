@@ -2,7 +2,7 @@ import {
   Client,
   SSEClientTransport,
   StreamableHTTPClientTransport,
-} from '@modelcontextprotocol/client';
+} from './mcpClient.js';
 import type { AppConfig } from '../config.js';
 import type { ToolSchema } from '../types.js';
 import { LevhubError } from '../security/errors.js';
@@ -58,10 +58,12 @@ export class ExternalMcpAdapter {
       signal: AbortSignal.timeout(timeoutMs),
     };
 
-    const client = new Client({
-      name: 'LEVHUB',
-      version: '1.0.0',
-    });
+    // Client constructor signature is (clientInfo, options). Passing a single
+    // object is what CI flagged as "Expected 2 arguments, but got 1".
+    const client = new Client(
+      { name: 'LEVHUB', version: '1.0.0' },
+      { capabilities: {} },
+    );
 
     const transport = conn.transport === 'sse'
       ? new SSEClientTransport(endpoint, { requestInit })
@@ -72,21 +74,19 @@ export class ExternalMcpAdapter {
       return { client, transport };
     } catch (error) {
       try { await client.close(); } catch { /* preserve original error */ }
-      if (error instanceof Error && /401|403|unauthorized|forbidden/i.test(error.message)) {
+      if (/401|403|unauthorized|forbidden/i.test(errorMessage(error))) {
         throw new LevhubError(
           'MCP_CONNECT_FAILED',
           'Server MCP meminta autentikasi. Gunakan kredensial yang disediakan server; OAuth interaktif belum dikonfigurasi untuk koneksi ini.',
           401,
         );
       }
-      if (error instanceof Error && /timeout|timed out|abort/i.test(error.message)) {
+      if (/timeout|timed out|abort/i.test(errorMessage(error))) {
         throw new LevhubError('MCP_CONNECT_FAILED', 'Koneksi MCP melewati batas waktu.', 504, true);
       }
       throw new LevhubError(
         'MCP_CONNECT_FAILED',
-        error instanceof Error
-          ? `Handshake MCP gagal: ${error.message.slice(0, 360)}`
-          : 'Tidak dapat menginisialisasi koneksi MCP.',
+        `Handshake MCP gagal: ${errorMessage(error).slice(0, 360)}`,
         502,
         true,
       );
@@ -102,15 +102,15 @@ export class ExternalMcpAdapter {
       return await operation(connected.client);
     } catch (error) {
       if (error instanceof LevhubError) throw error;
-      if (error instanceof Error && /401|403|unauthorized|forbidden/i.test(error.message)) {
+      if (/401|403|unauthorized|forbidden/i.test(errorMessage(error))) {
         throw new LevhubError('MCP_CONNECT_FAILED', 'Autentikasi ditolak oleh server MCP.', 401);
       }
-      if (error instanceof Error && /timeout|timed out|abort/i.test(error.message)) {
+      if (/timeout|timed out|abort/i.test(errorMessage(error))) {
         throw new LevhubError('MCP_CONNECT_FAILED', 'Operasi MCP melewati batas waktu.', 504, true);
       }
       throw new LevhubError(
         'MCP_CONNECT_FAILED',
-        error instanceof Error ? error.message.slice(0, 500) : 'Operasi MCP gagal.',
+        errorMessage(error).slice(0, 500) || 'Operasi MCP gagal.',
         502,
         true,
       );
@@ -157,6 +157,15 @@ export class ExternalMcpAdapter {
     return tools;
   }
 
+  /**
+   * Returns the human-readable text of an MCP tool result plus structured
+   * content, without corrupting JSON.
+   *
+   * Root cause fixed here: the previous implementation did
+   * `JSON.stringify(result).slice(0, MAX)`, which cut the JSON mid-token and
+   * produced invalid payloads for the model. We now serialize first, and only
+   * truncate as a last resort with an explicit marker.
+   */
   async callTool(
     conn: ExternalMcpConnectionConfig,
     toolName: string,
@@ -165,12 +174,57 @@ export class ExternalMcpAdapter {
     const result = await this.withClient(conn, (client) =>
       client.callTool({ name: toolName, arguments: args }),
     );
-    return {
-      output: JSON.stringify(result).slice(0, this.config.MAX_TOOL_OUTPUT_BYTES),
+
+    const structured = result as unknown as {
+      content?: Array<{ type?: string; text?: string }>;
+      structuredContent?: unknown;
+      isError?: boolean;
     };
+
+    const maxBytes = this.config.MAX_TOOL_OUTPUT_BYTES;
+    let text = '';
+
+    if (Array.isArray(structured.content)) {
+      const textParts = structured.content
+        .filter((part) => part && part.type === 'text' && typeof part.text === 'string')
+        .map((part) => part.text as string);
+      if (textParts.length > 0) {
+        text = textParts.join('\n');
+      }
+    }
+
+    if (!text && structured.structuredContent !== undefined) {
+      text = JSON.stringify(structured.structuredContent);
+    }
+
+    if (!text) {
+      text = JSON.stringify(result);
+    }
+
+    if (structured.isError) {
+      text = `[tool melaporkan error]\n${text}`;
+    }
+
+    if (Buffer.byteLength(text, 'utf8') > maxBytes) {
+      // Truncate on a character boundary and flag it so the model is not misled.
+      const truncated = Buffer.from(text, 'utf8').subarray(0, maxBytes).toString('utf8');
+      text = `${truncated}\n\n[output dipotong: melebihi ${maxBytes} byte]`;
+    }
+
+    return { output: text };
   }
 
   invalidateCache(connectionId: string): void {
     this.toolCache.delete(connectionId);
+  }
+}
+
+function errorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === 'string') return error;
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return 'unknown error';
   }
 }

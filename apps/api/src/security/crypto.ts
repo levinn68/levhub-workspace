@@ -1,5 +1,15 @@
 import crypto from 'node:crypto';
 
+/**
+ * Signed, stateless session helpers.
+ *
+ * Root cause fixed here: verifySessionToken() previously returned a synthetic
+ * SessionRecord with `csrfToken: ''`, `createdAt: 0`, `expiresAt: 0`. Callers
+ * could mistake that for a live session with zero expiry. It now returns only
+ * a signature-verified session id, and callers must resolve expiry/CSRF from
+ * the database (see repo.getActiveSession).
+ */
+
 export interface SessionRecord {
   id: string;
   csrfToken: string;
@@ -7,6 +17,9 @@ export interface SessionRecord {
   expiresAt: number;
 }
 
+export interface VerifiedSessionId {
+  id: string;
+}
 
 /**
  * Verifies a password against a stored salted scrypt hash (`scrypt$N$r$p$salt$hash`).
@@ -99,9 +112,16 @@ export function createSession(secret: string, ttlHours: number): { token: string
   return { token: signSessionId(id, secret), record };
 }
 
-export function verifySessionToken(token: string | undefined, secret: string): SessionRecord | null {
+/**
+ * Verifies only the HMAC signature of a session token.
+ * Returns the embedded session id, or null when the token is absent/invalid.
+ * Expiry and CSRF validity MUST be resolved from the database by the caller.
+ */
+export function verifySessionToken(token: string | undefined, secret: string): VerifiedSessionId | null {
   if (!token || !token.includes('.')) return null;
-  const [sessionId, sig] = token.split('.');
+  const separator = token.lastIndexOf('.');
+  const sessionId = token.slice(0, separator);
+  const sig = token.slice(separator + 1);
   if (!sessionId || !sig) return null;
 
   const expectedSig = crypto.createHmac('sha256', secret).update(sessionId).digest('base64url');
@@ -109,5 +129,5 @@ export function verifySessionToken(token: string | undefined, secret: string): S
   const expBuf = Buffer.from(expectedSig);
   if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) return null;
 
-  return { id: sessionId, csrfToken: '', createdAt: 0, expiresAt: 0 };
+  return { id: sessionId };
 }

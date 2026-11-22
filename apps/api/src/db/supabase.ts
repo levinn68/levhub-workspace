@@ -44,6 +44,21 @@ export class LevhubRepository {
     return data.signedUrl;
   }
 
+  /**
+   * Downloads a private chat attachment for server-side text extraction.
+   * Only used by the API; the browser never receives raw object bytes this way.
+   */
+  async downloadChatAttachment(path: string): Promise<Buffer> {
+    const { data, error } = await this.db().storage
+      .from(this.config.SUPABASE_CHAT_BUCKET)
+      .download(path);
+    if (error || !data) {
+      throw new LevhubError('UPSTREAM_UNAVAILABLE', 'Gagal mengunduh lampiran dari Storage.', 502, true);
+    }
+    const arrayBuffer = await data.arrayBuffer();
+    return Buffer.from(arrayBuffer);
+  }
+
   private db(): SupabaseClient {
     if (!this.client) {
       throw new LevhubError(
@@ -146,7 +161,13 @@ export class LevhubRepository {
     return data as ConversationRecord;
   }
 
-  async getConversation(id: string): Promise<{ conversation: ConversationRecord; messages: MessageRecord[]; toolCalls: ToolCallRecord[] }> {
+  /**
+   * Returns a conversation with its most recent messages only.
+   * Root cause of context overflow: this previously loaded the entire history
+   * with no bound, so long conversations eventually exceeded model context.
+   * Now the newest `messageLimit` messages are returned in ascending order.
+   */
+  async getConversation(id: string, messageLimit = 80): Promise<{ conversation: ConversationRecord; messages: MessageRecord[]; toolCalls: ToolCallRecord[] }> {
     const { data: conv, error: convErr } = await this.db()
       .from('levhub_conversations')
       .select('*')
@@ -158,13 +179,20 @@ export class LevhubRepository {
     if (convErr || !conv) throw new LevhubError('NOT_FOUND', 'Percakapan tidak ditemukan.', 404);
 
     const [{ data: msgs }, { data: calls }] = await Promise.all([
-      this.db().from('levhub_messages').select('*').eq('conversation_id', id).order('sequence_no', { ascending: true }),
+      this.db()
+        .from('levhub_messages')
+        .select('*')
+        .eq('conversation_id', id)
+        .order('sequence_no', { ascending: false })
+        .limit(messageLimit),
       this.db().from('levhub_tool_calls').select('*').eq('conversation_id', id).order('created_at', { ascending: true }),
     ]);
 
+    const orderedMessages = ((msgs ?? []) as MessageRecord[]).slice().reverse();
+
     return {
       conversation: conv as ConversationRecord,
-      messages: (msgs ?? []) as MessageRecord[],
+      messages: orderedMessages,
       toolCalls: (calls ?? []) as ToolCallRecord[],
     };
   }
