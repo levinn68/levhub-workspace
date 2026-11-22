@@ -7,7 +7,6 @@ export interface SessionRecord {
   expiresAt: number;
 }
 
-const activeSessions = new Map<string, SessionRecord>();
 
 /**
  * Verifies a password against a stored salted scrypt hash (`scrypt$N$r$p$salt$hash`).
@@ -79,6 +78,14 @@ function signSessionId(sessionId: string, secret: string): string {
   return `${sessionId}.${sig}`;
 }
 
+export function hashSessionToken(token: string): string {
+  return crypto.createHash('sha256').update(token).digest('hex');
+}
+
+export function hashCsrfToken(token: string): string {
+  return crypto.createHash('sha256').update(token).digest('hex');
+}
+
 export function createSession(secret: string, ttlHours: number): { token: string; record: SessionRecord } {
   const id = crypto.randomBytes(24).toString('base64url');
   const csrfToken = crypto.randomBytes(24).toString('base64url');
@@ -89,7 +96,6 @@ export function createSession(secret: string, ttlHours: number): { token: string
     createdAt: now,
     expiresAt: now + ttlHours * 3600 * 1000,
   };
-  activeSessions.set(id, record);
   return { token: signSessionId(id, secret), record };
 }
 
@@ -101,25 +107,7 @@ export function verifySessionToken(token: string | undefined, secret: string): S
   const expectedSig = crypto.createHmac('sha256', secret).update(sessionId).digest('base64url');
   const sigBuf = Buffer.from(sig);
   const expBuf = Buffer.from(expectedSig);
-  if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
-    return null;
-  }
+  if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) return null;
 
-  const record = activeSessions.get(sessionId);
-  if (!record) return null;
-  if (Date.now() > record.expiresAt) {
-    activeSessions.delete(sessionId);
-    return null;
-  }
-  return record;
-}
-
-export function revokeSession(token: string | undefined): void {
-  if (!token) return;
-  const [sessionId] = token.split('.');
-  if (sessionId) activeSessions.delete(sessionId);
-}
-
-export function revokeAllSessions(): void {
-  activeSessions.clear();
+  return { id: sessionId, csrfToken: '', createdAt: 0, expiresAt: 0 };
 }
