@@ -11,6 +11,10 @@ import {
   CheckCircle2,
   XCircle,
   AlertTriangle,
+  Paperclip,
+  X,
+  Users,
+  FileText,
 } from 'lucide-react';
 import { AppShell } from '@/components/AppShell';
 import { SafeMarkdown } from '@/components/SafeMarkdown';
@@ -28,6 +32,8 @@ interface ChatMessage {
   role: 'user' | 'assistant' | 'tool' | 'system';
   text: string;
   createdAt?: string;
+  attachments?: Array<{ name: string; mimeType: string }>;
+  collaboration?: Array<{ role: string; modelName: string }>;
 }
 
 interface ToolActivity {
@@ -53,6 +59,11 @@ function ChatWorkspaceInner() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [toolActivities, setToolActivities] = useState<ToolActivity[]>([]);
   const [draft, setDraft] = useState('');
+  const [pendingAttachments, setPendingAttachments] = useState<Array<{ path: string; name: string; mimeType: string; size: number }>>([]);
+  const [uploadingFiles, setUploadingFiles] = useState(false);
+  const [collaborationMode, setCollaborationMode] = useState(false);
+  const [collaboratorModel, setCollaboratorModel] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [isStreaming, setIsStreaming] = useState(false);
   const [turnError, setTurnError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -61,6 +72,8 @@ function ChatWorkspaceInner() {
     apiFetch<{ items: ModelItem[] }>('/api/models')
       .then((res) => {
         setModels(res.items);
+        const available = res.items.filter((m) => m.available);
+        if (available.length > 1 && !collaboratorModel) setCollaboratorModel(available[1].id);
         const firstAvailable = res.items.find((m) => m.available);
         if (firstAvailable && !selectedModel) {
           setSelectedModel(firstAvailable.id);
@@ -112,8 +125,8 @@ function ChatWorkspaceInner() {
 
   async function handleSend(e?: React.FormEvent) {
     if (e) e.preventDefault();
-    const text = draft.trim();
-    if (!text || !selectedModel || isStreaming) return;
+    const text = draft.trim() || (pendingAttachments.length ? 'Tolong analisis lampiran yang saya kirim.' : '');
+    if ((!text && pendingAttachments.length === 0) || !selectedModel || isStreaming || uploadingFiles) return;
 
     setTurnError(null);
     setIsStreaming(true);
@@ -123,17 +136,34 @@ function ChatWorkspaceInner() {
 
     setMessages((prev) => [
       ...prev,
-      { id: tempUserId, role: 'user', text },
+      { id: tempUserId, role: 'user', text, attachments: pendingAttachments.map(({ name, mimeType }) => ({ name, mimeType })) },
       { id: tempAssistantId, role: 'assistant', text: '' },
     ]);
     setDraft('');
+    const attachmentsToSend = pendingAttachments;
+    setPendingAttachments([]);
 
     const controller = new AbortController();
     abortRef.current = controller;
 
     try {
+      if (collaborationMode) {
+        const secondModel = collaboratorModel && collaboratorModel !== selectedModel
+          ? collaboratorModel
+          : models.find((m) => m.available && m.id !== selectedModel)?.id;
+        if (!secondModel) throw new Error('Pilih minimal dua model AI yang tersedia untuk kolaborasi.');
+        const result = await apiFetch<{ conversationId: string; steps: Array<{ role: string; modelName: string }>; finalText: string }>('/api/chat/collaborate', {
+          method: 'POST',
+          body: JSON.stringify({ conversationId, modelIds: [selectedModel, secondModel], message: text, attachments: attachmentsToSend }),
+        });
+        setConversationId(result.conversationId);
+        setMessages((prev) => prev.map((m) => m.id === tempAssistantId
+          ? { ...m, text: result.finalText, collaboration: result.steps.map(({ role, modelName }) => ({ role, modelName })) }
+          : m));
+        return;
+      }
       await streamChatRequest(
-        { conversationId, modelId: selectedModel, message: text },
+        { conversationId, modelId: selectedModel, message: text, attachments: attachmentsToSend },
         (ev) => {
           if (ev.conversationId && !conversationId) {
             setConversationId(ev.conversationId);
@@ -193,6 +223,40 @@ function ChatWorkspaceInner() {
     } finally {
       setIsStreaming(false);
       abortRef.current = null;
+    }
+  }
+
+  async function handleFilesSelected(event: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.target.files || []);
+    event.target.value = '';
+    if (!files.length) return;
+    if (pendingAttachments.length + files.length > 8) {
+      setTurnError('Maksimal 8 lampiran per pesan.');
+      return;
+    }
+    setUploadingFiles(true);
+    setTurnError(null);
+    try {
+      const uploaded = [];
+      for (const file of files) {
+        const mimeType = file.type || 'application/octet-stream';
+        const signed = await apiFetch<{ signedUrl: string; path: string }>('/api/chat/attachments/sign', {
+          method: 'POST',
+          body: JSON.stringify({ name: file.name, mimeType, size: file.size }),
+        });
+        const response = await fetch(signed.signedUrl, {
+          method: 'PUT',
+          headers: { 'Content-Type': mimeType },
+          body: file,
+        });
+        if (!response.ok) throw new Error(`Upload ${file.name} gagal (HTTP ${response.status}).`);
+        uploaded.push({ path: signed.path, name: file.name, mimeType, size: file.size });
+      }
+      setPendingAttachments((prev) => [...prev, ...uploaded]);
+    } catch (err) {
+      setTurnError(err instanceof Error ? err.message : 'Gagal mengunggah lampiran.');
+    } finally {
+      setUploadingFiles(false);
     }
   }
 
@@ -292,6 +356,21 @@ function ChatWorkspaceInner() {
                   ) : (
                     <span className="text-xs italic text-slate-400">Sedang menghasilkan respons...</span>
                   )}
+                  {msg.attachments && msg.attachments.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {msg.attachments.map((file, index) => (
+                        <span key={index} className="inline-flex items-center gap-1 rounded-lg bg-black/20 px-2 py-1 text-[10px] text-slate-300">
+                          <FileText className="h-3 w-3" /> {file.name}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {msg.collaboration && msg.collaboration.length > 0 && (
+                    <div className="mt-3 rounded-xl border border-indigo-300/20 bg-indigo-400/10 p-2.5">
+                      <div className="mb-1 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-indigo-200"><Users className="h-3.5 w-3.5" /> Tim AI berkolaborasi</div>
+                      {msg.collaboration.map((agent, index) => <p key={index} className="text-[10px] text-slate-300">{agent.role}: {agent.modelName}</p>)}
+                    </div>
+                  )}
                 </div>
               </div>
             ))
@@ -357,7 +436,33 @@ function ChatWorkspaceInner() {
         )}
 
         {/* Composer */}
-        <form onSubmit={handleSend} className="glass-panel flex items-end gap-2 rounded-2xl p-3">
+        <div className="glass-panel rounded-2xl p-3">
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            <input ref={fileInputRef} type="file" multiple accept="image/*,video/mp4,video/webm,video/quicktime,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.md,.json,.zip" className="hidden" onChange={handleFilesSelected} />
+            <button type="button" onClick={() => fileInputRef.current?.click()} disabled={uploadingFiles || isStreaming} className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-slate-200 hover:bg-white/10 disabled:opacity-40">
+              <Paperclip className="h-3.5 w-3.5" /> {uploadingFiles ? 'Mengunggah...' : 'Lampirkan file'}
+            </button>
+            <button type="button" onClick={() => setCollaborationMode((v) => !v)} className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs ${collaborationMode ? 'border-indigo-300/40 bg-indigo-400/20 text-indigo-100' : 'border-white/10 bg-white/5 text-slate-300'}`}>
+              <Users className="h-3.5 w-3.5" /> {collaborationMode ? 'Kolaborasi AI aktif' : 'Kolaborasi AI'}
+            </button>
+            {collaborationMode && (
+              <select value={collaboratorModel} onChange={(e) => setCollaboratorModel(e.target.value)} className="glass-input min-w-0 flex-1 rounded-lg px-2 py-2 text-[11px] text-slate-100">
+                <option value="">Pilih AI kedua</option>
+                {models.filter((m) => m.available && m.id !== selectedModel).map((m) => <option key={m.id} value={m.id} className="bg-slate-900">{m.displayName}</option>)}
+              </select>
+            )}
+          </div>
+          {pendingAttachments.length > 0 && (
+            <div className="mb-2 flex flex-wrap gap-2">
+              {pendingAttachments.map((file) => (
+                <span key={file.path} className="inline-flex max-w-full items-center gap-1.5 rounded-lg border border-sky-300/20 bg-sky-400/10 px-2.5 py-1.5 text-[10px] text-sky-100">
+                  <FileText className="h-3 w-3 shrink-0" /><span className="max-w-[180px] truncate">{file.name}</span>
+                  <button type="button" aria-label={`Hapus ${file.name}`} onClick={() => setPendingAttachments((prev) => prev.filter((item) => item.path !== file.path))}><X className="h-3 w-3" /></button>
+                </span>
+              ))}
+            </div>
+          )}
+          <form onSubmit={handleSend} className="flex items-end gap-2">
           <textarea
             rows={2}
             value={draft}
@@ -393,7 +498,8 @@ function ChatWorkspaceInner() {
               Kirim
             </button>
           )}
-        </form>
+          </form>
+        </div>
       </div>
     </AppShell>
   );
