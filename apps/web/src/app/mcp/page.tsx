@@ -151,7 +151,36 @@ export default function McpHubPage() {
     }
 
     const endpointCandidate = typeof declaredEndpoint === 'string' && /^https:\/\//i.test(declaredEndpoint) ? declaredEndpoint : '';
+    const authHints = [...(Array.isArray(item.auth) ? item.auth : []), ...(Array.isArray(detail?.auth) ? detail.auth : [])].join(' ').toLowerCase();
+    const requiresCredentials = /oauth|bearer|token|api.?key|header|environment variable|credential|auth required/.test(authHints);
     const packages = detail?.packages || install.packages || [];
+
+    // A catalog entry with a real remote endpoint and no declared credentials
+    // should connect in one click, not open a redundant manual configuration form.
+    if (endpointCandidate && !requiresCredentials) {
+      setFeedback(`Menghubungkan ${item.name}...`);
+      try {
+        const created = await apiFetch<ExternalMcpItem>('/api/mcp/external', {
+          method: 'POST',
+          body: JSON.stringify({
+            displayName: item.name,
+            endpoint: endpointCandidate,
+            transport: transportValue.includes('sse') ? 'sse' : 'streamable_http',
+            authType: 'none',
+          }),
+        });
+        await apiFetch(`/api/mcp/${created.id}/test`, { method: 'POST' });
+        await apiFetch(`/api/mcp/${created.id}/enable`, { method: 'POST' });
+        await loadMcp();
+        setFeedback(`${item.name} berhasil terhubung dan diaktifkan.`);
+        setTab('external');
+      } catch (err) {
+        await loadMcp();
+        setFeedback(err instanceof Error ? `Koneksi ${item.name} gagal: ${err.message}` : `Koneksi ${item.name} gagal. Periksa endpoint dan autentikasi server.`);
+        setTab('external');
+      }
+      return;
+    }
     const hasLocalInstall = Array.isArray(packages) && packages.length > 0;
     setDisplayName(item.name);
     setEndpoint(endpointCandidate);
