@@ -87,7 +87,7 @@ export default function McpHubPage() {
   const [customHeaderName, setCustomHeaderName] = useState('Authorization');
   const [marketQuery, setMarketQuery] = useState('');
   const [marketProvider, setMarketProvider] = useState('all');
-  const [marketSort, setMarketSort] = useState('quality');
+  const [marketSort, setMarketSort] = useState('stars');
   const [marketCursor, setMarketCursor] = useState<string | null>(null);
   const [marketCategory, setMarketCategory] = useState('All');
   const [marketItems, setMarketItems] = useState<MarketplaceItem[]>([]);
@@ -262,7 +262,7 @@ export default function McpHubPage() {
               </div>
               <div className="mt-4 grid gap-2 sm:grid-cols-[1fr_190px]">
                 <div className="relative"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"/><input value={marketQuery} onChange={e => setMarketQuery(e.target.value)} placeholder="Cari GitHub, database, browser..." className="glass-input w-full rounded-xl py-3 pl-10 pr-3 text-sm"/></div>
-                <div className="grid grid-cols-2 gap-2"><select value={marketProvider} onChange={e => setMarketProvider(e.target.value)} className="glass-input rounded-xl px-3 py-2 text-xs text-white"><option value="all" className="bg-slate-900">Semua sumber</option><option value="hosted" className="bg-slate-900">Katalog luas</option><option value="official" className="bg-slate-900">Registry</option><option value="github" className="bg-slate-900">GitHub</option></select><select value={marketSort} onChange={e => setMarketSort(e.target.value)} className="glass-input rounded-xl px-3 py-2 text-xs text-white"><option value="quality" className="bg-slate-900">Paling populer</option><option value="stars" className="bg-slate-900">GitHub stars</option><option value="downloads" className="bg-slate-900">Downloads</option><option value="new" className="bg-slate-900">Terbaru</option></select></div>
+                <div className="grid grid-cols-2 gap-2"><select value={marketProvider} onChange={e => setMarketProvider(e.target.value)} className="glass-input rounded-xl px-3 py-2 text-xs text-white"><option value="all" className="bg-slate-900">Semua sumber</option><option value="hosted" className="bg-slate-900">Katalog luas</option><option value="official" className="bg-slate-900">Registry</option><option value="github" className="bg-slate-900">GitHub</option></select><select value={marketSort} onChange={e => setMarketSort(e.target.value)} className="glass-input rounded-xl px-3 py-2 text-xs text-white"><option value="stars" className="bg-slate-900">Stars terbanyak</option><option value="quality" className="bg-slate-900">Peringkat kualitas</option><option value="downloads" className="bg-slate-900">Downloads</option><option value="new" className="bg-slate-900">Terbaru</option></select></div>
               </div>
               <div className="mt-3 flex flex-wrap gap-2">
                 {marketCategories.map(cat => <button key={cat} type="button" onClick={() => setMarketCategory(cat)} className={`rounded-full px-3 py-1.5 text-[11px] ${marketCategory === cat ? 'bg-indigo-300/20 text-indigo-100 ring-1 ring-indigo-200/30' : 'bg-white/[.05] text-slate-400 hover:bg-white/10'}`}>{cat}</button>)}
