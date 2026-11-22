@@ -41,6 +41,25 @@ export function isPrivateOrReservedIp(ip: string): boolean {
       return true; // Link-local
     }
     if (lower.startsWith('ff')) return true; // Multicast
+    // IPv4-mapped forms that were not stripped cleanly (e.g. 0:0:0:0:0:ffff:7f00:1).
+    if (lower.includes('::ffff:') || lower.includes('0:0:0:0:0:ffff')) return true;
+    // NAT64 (64:ff9b::/96) can wrap private IPv4 space.
+    if (lower.startsWith('64:ff9b:') || lower.startsWith('64:ff9b::')) return true;
+    // 6to4 (2002::/16) embeds an IPv4 address in the next 32 bits.
+    if (lower.startsWith('2002:')) {
+      const hextets = lower.split(':');
+      if (hextets.length >= 2 && hextets[1].length === 4) {
+        const hi = parseInt(hextets[1].slice(0, 2), 16);
+        const lo = parseInt(hextets[1].slice(2, 4), 16);
+        if (hextets[2] && hextets[2].length === 4) {
+          const hi2 = parseInt(hextets[2].slice(0, 2), 16);
+          const lo2 = parseInt(hextets[2].slice(2, 4), 16);
+          const embedded = `${hi}.${lo}.${hi2}.${lo2}`;
+          return isPrivateOrReservedIp(embedded);
+        }
+      }
+      return true;
+    }
     return false;
   }
 
@@ -50,6 +69,12 @@ export function isPrivateOrReservedIp(ip: string): boolean {
 /**
  * Validates external MCP endpoint URLs against SSRF (S-007).
  * Blocks non-HTTPS in production, loopback/private/link-local/metadata IPs, and DNS rebinding to private ranges.
+ *
+ * Known limitation: this performs a pre-flight DNS check. A TOCTOU window
+ * remains because the actual fetch resolves DNS again. True pinning requires
+ * a custom undici Agent/dispatcher wired into the MCP transport, which is not
+ * yet implemented. Redirects are rejected (`redirect: 'error'`) which removes
+ * the most common bypass.
  */
 export async function validateExternalEndpointUrl(
   rawUrl: string,
