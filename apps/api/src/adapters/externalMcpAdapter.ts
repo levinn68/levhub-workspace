@@ -79,7 +79,7 @@ export class ExternalMcpAdapter {
     const rawText = (await res.text()).slice(0, this.config.MAX_TOOL_OUTPUT_BYTES);
     let parsed: Record<string, unknown> | undefined;
     if (contentType.includes('text/event-stream')) {
-      for (const line of rawText.split(/\\r?\\n/)) {
+      for (const line of rawText.split(/\r?\n/)) {
         if (!line.startsWith('data:')) continue;
         const data = line.slice(5).trim();
         if (!data || data === '[DONE]') continue;
@@ -93,7 +93,7 @@ export class ExternalMcpAdapter {
     }
 
     if (!parsed) {
-      const looksLikeHtml = /<\\s*!doctype html|<\\s*html/i.test(rawText);
+      const looksLikeHtml = /<\s*!doctype html|<\s*html/i.test(rawText);
       const hint = looksLikeHtml
         ? 'Endpoint mengembalikan halaman HTML, bukan MCP. URL katalog/dokumentasi tidak bisa dipakai sebagai endpoint koneksi.'
         : `Format respons tidak didukung (Content-Type: ${contentType || 'tidak diketahui'}).`;
