@@ -25,12 +25,6 @@ const envSchema = z.object({
   ROUTER_CATALOG_TTL_MS: z.coerce.number().int().min(5000).default(60000),
   ROUTER_TIMEOUT_MS: z.coerce.number().int().min(3000).default(45000),
 
-  OVERDRIVE_BASE_URL: z.string().default(''),
-  OVERDRIVE_API_TOKEN: z.string().default(''),
-  OVERDRIVE_MCP_LIST_PATH: z.string().default('/v1/mcp/servers'),
-  OVERDRIVE_SKILLS_LIST_PATH: z.string().default('/v1/skills'),
-  OVERDRIVE_TIMEOUT_MS: z.coerce.number().int().min(2000).default(20000),
-
   SUPABASE_URL: z.string().default(''),
   SUPABASE_SERVICE_ROLE_KEY: z.string().default(''),
   SUPABASE_STORAGE_BUCKET: z.string().default('levhub-skills'),
