@@ -228,6 +228,76 @@ app.get('/api/conversations/:id/export', async (req, reply) => {
 });
 
 app.get('/api/mcp', async (req, reply) => { await requireSession(req, reply); const [saved, runtimeServers] = await Promise.all([repo.isConfigured() ? repo.listIntegrations('mcp') : Promise.resolve([]), Promise.resolve([])]); return { runtimeServers, externalServers: saved.map(maskIntegration) }; });
+
+type MarketplaceEntry = { id: string; name: string; description: string; version: string; source: string; category: string; repositoryUrl: string | null; websiteUrl: string | null; transport: string[]; auth: string[]; install: unknown; verified: boolean };
+function inferMcpCategory(value: string): string {
+  const s = value.toLowerCase();
+  if (/github|gitlab|git|code|developer|sentry/.test(s)) return 'Developer Tools';
+  if (/postgres|supabase|mysql|mongo|database|sql|redis/.test(s)) return 'Database';
+  if (/browser|search|fetch|crawl|firecrawl|puppeteer|playwright/.test(s)) return 'Browser & Search';
+  if (/cloud|aws|azure|gcp|vercel|cloudflare|docker|kubernetes|railway/.test(s)) return 'Cloud & DevOps';
+  if (/slack|discord|telegram|email|notion|linear|asana/.test(s)) return 'Productivity & Communication';
+  if (/file|storage|drive|dropbox|s3/.test(s)) return 'Files & Storage';
+  if (/security|auth|secret|vault/.test(s)) return 'Security';
+  if (/figma|design|image|video|media|canva/.test(s)) return 'Design & Media';
+  if (/ai|agent|model|llm|openai|gemini/.test(s)) return 'AI & Agents';
+  return 'Other';
+}
+function normalizeRegistryEntry(raw: any): MarketplaceEntry | null {
+  const s = raw?.server ?? raw;
+  if (!s || typeof s.name !== 'string') return null;
+  const packages = Array.isArray(s.packages) ? s.packages : [];
+  const remotes = Array.isArray(s.remotes) ? s.remotes : [];
+  const transports = [...new Set([...(packages.length ? ['stdio'] : []), ...remotes.map((r: any) => String(r?.type || 'http').toLowerCase())])];
+  const auth = [...new Set([...(packages.some((p: any) => (p.environmentVariables || []).length) ? ['Environment Variables'] : []), ...(remotes.some((r: any) => (r.headers || []).length) ? ['HTTP Headers / Token'] : []), ...(remotes.length ? ['Remote Endpoint'] : [])])];
+  const meta = raw?._meta?.['io.modelcontextprotocol.registry/official'];
+  return { id: 'official:' + s.name, name: String(s.title || s.name), description: String(s.description || 'Official MCP Registry listing.'), version: String(s.version || 'unknown'), source: 'Official MCP Registry', category: inferMcpCategory([s.name, s.description, s.title].filter(Boolean).join(' ')), repositoryUrl: typeof s.repository?.url === 'string' ? s.repository.url : null, websiteUrl: typeof s.websiteUrl === 'string' ? s.websiteUrl : null, transport: transports, auth, install: { packages, remotes }, verified: meta?.status === 'active' && meta?.isLatest === true };
+}
+
+app.get('/api/mcp/marketplace', async (req, reply) => {
+  await requireSession(req, reply);
+  const q = req.query as { q?: string; category?: string; provider?: string; limit?: string };
+  const query = String(q.q || '').trim().slice(0, 100);
+  const category = String(q.category || 'All');
+  const provider = String(q.provider || 'all').toLowerCase();
+  const limit = Math.min(Math.max(Number(q.limit) || 60, 1), 100);
+  const tasks: Array<Promise<MarketplaceEntry[]>> = [];
+  if (provider === 'all' || provider === 'official') tasks.push((async () => {
+    const url = new URL('https://registry.modelcontextprotocol.io/v0.1/servers');
+    url.searchParams.set('limit', '100'); url.searchParams.set('version', 'latest');
+    if (query.length >= 3) url.searchParams.set('search', query);
+    const res = await fetch(url, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(12000) });
+    if (!res.ok) throw new Error('Official MCP Registry unavailable');
+    const data: any = await res.json();
+    return (Array.isArray(data.servers) ? data.servers : []).map(normalizeRegistryEntry).filter(Boolean) as MarketplaceEntry[];
+  })());
+  if (provider === 'all' || provider === 'community') tasks.push((async () => {
+    const res = await fetch('https://mcp.tc/api/index.json', { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(10000) });
+    if (!res.ok) throw new Error('Community directory unavailable');
+    const data: any = await res.json();
+    const rows = Array.isArray(data) ? data : (data.items || data.servers || data.results || []);
+    return rows.map((raw: any) => {
+      const s = raw.server || raw; const name = s?.name || s?.title || s?.slug;
+      if (typeof name !== 'string') return null;
+      return { id: 'community:' + (s.slug || name), name: String(s.title || name), description: String(s.description || 'Community MCP directory listing.'), version: String(s.version || 'Community'), source: 'mcp.tc Community Directory', category: inferMcpCategory([name, s.description, s.category].filter(Boolean).join(' ')), repositoryUrl: s.repository?.url || s.repositoryUrl || null, websiteUrl: s.url || s.website || null, transport: Array.isArray(s.transports) ? s.transports : [], auth: Array.isArray(s.auth) ? s.auth : [], install: s, verified: false } as MarketplaceEntry;
+    }).filter(Boolean) as MarketplaceEntry[];
+  })());
+  if (provider === 'all' || provider === 'github') tasks.push((async () => {
+    const url = new URL('https://api.github.com/search/repositories');
+    url.searchParams.set('q', (query || 'mcp server') + ' in:name,description,readme'); url.searchParams.set('sort', 'updated'); url.searchParams.set('per_page', '30');
+    const res = await fetch(url, { headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'LEVHUB-MCP-Marketplace' }, signal: AbortSignal.timeout(12000) });
+    if (!res.ok) throw new Error('GitHub discovery unavailable');
+    const data: any = await res.json();
+    return (data.items || []).map((s: any) => ({ id: 'github:' + s.full_name, name: s.full_name, description: String(s.description || 'Community MCP server repository.'), version: s.pushed_at ? 'Updated ' + String(s.pushed_at).slice(0, 10) : 'Repository', source: 'GitHub Community', category: inferMcpCategory(s.full_name + ' ' + (s.description || '')), repositoryUrl: s.html_url || null, websiteUrl: s.homepage || null, transport: [], auth: [], install: { fullName: s.full_name, defaultBranch: s.default_branch }, verified: false } as MarketplaceEntry));
+  })());
+  const settled = await Promise.allSettled(tasks);
+  const entries = settled.flatMap(x => x.status === 'fulfilled' ? x.value : []);
+  const failures = settled.filter(x => x.status === 'rejected').length;
+  const unique = Array.from(new Map(entries.map(item => [item.id, item])).values());
+  const filtered = unique.filter(item => (category === 'All' || item.category === category) && (!query || (item.name + ' ' + item.description + ' ' + item.category + ' ' + item.source).toLowerCase().includes(query.toLowerCase())));
+  return { items: filtered.slice(0, limit), total: filtered.length, providers: [{ id: 'official', name: 'Official MCP Registry' }, { id: 'community', name: 'mcp.tc Community Directory' }, { id: 'github', name: 'GitHub Community' }], categories: ['All', ...Array.from(new Set(unique.map(item => item.category))).sort()], providerStatus: { loaded: tasks.length - failures, requested: tasks.length, partial: failures > 0 }, note: 'Katalog discovery berisi metadata; verifikasi endpoint, transport, dan autentikasi sebelum menyimpan koneksi.' };
+});
+
 app.post('/api/mcp/external', async (req, reply) => {
   await requireSession(req, reply);
   const parsed = z.object({ displayName: z.string().min(1).max(100), transport: z.enum(['streamable_http', 'sse']), endpoint: z.string().url(), authType: z.enum(['none', 'bearer', 'header']).default('none'), secret: z.string().optional(), customHeaderName: z.string().optional(), timeoutMs: z.number().int().min(2000).max(60000).optional() }).safeParse(req.body);
