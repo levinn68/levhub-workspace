@@ -15,6 +15,11 @@ interface ExternalMcpItem {
   lastHealthCheck: string | null;
 }
 
+interface MarketplaceItem {
+  id: string; name: string; description: string; version: string; source: string; category: string;
+  repositoryUrl: string | null; websiteUrl: string | null; transport: string[]; auth: string[];
+  install: any; verified: boolean;
+}
 interface RuntimeMcpItem {
   id: string;
   name: string;
@@ -38,6 +43,13 @@ export default function McpHubPage() {
   const [secret, setSecret] = useState('');
   const [customHeaderName, setCustomHeaderName] = useState('Authorization');
   const [marketQuery, setMarketQuery] = useState('');
+  const [marketProvider, setMarketProvider] = useState('all');
+  const [marketCategory, setMarketCategory] = useState('All');
+  const [marketItems, setMarketItems] = useState<MarketplaceItem[]>([]);
+  const [marketCategories, setMarketCategories] = useState<string[]>(['All']);
+  const [marketTotal, setMarketTotal] = useState(0);
+  const [marketLoading, setMarketLoading] = useState(false);
+  const [marketPartial, setMarketPartial] = useState(false);
 
   async function loadMcp() {
     setLoading(true);
@@ -52,9 +64,23 @@ export default function McpHubPage() {
     }
   }
 
-  useEffect(() => {
-    loadMcp();
-  }, []);
+  useEffect(() => { loadMcp(); }, []);
+  useEffect(() => { if (tab === 'marketplace') loadMarketplace(); }, [tab, marketQuery, marketCategory, marketProvider]);
+
+
+  async function loadMarketplace() {
+    setMarketLoading(true);
+    try {
+      const params = new URLSearchParams({ q: marketQuery, category: marketCategory, provider: marketProvider, limit: '100' });
+      const data = await apiFetch<{ items: MarketplaceItem[]; categories: string[]; total: number; providerStatus?: { partial?: boolean } }>(`/api/mcp/marketplace?${params.toString()}`);
+      setMarketItems(data.items || []);
+      setMarketCategories(data.categories || ['All']);
+      setMarketTotal(data.total || 0);
+      setMarketPartial(Boolean(data.providerStatus?.partial));
+    } catch (err) {
+      setFeedback(err instanceof Error ? err.message : 'Gagal memuat katalog MCP.');
+    } finally { setMarketLoading(false); }
+  }
 
   async function handleAddExternal(e: React.FormEvent) {
     e.preventDefault();
@@ -139,18 +165,32 @@ export default function McpHubPage() {
         {tab === 'marketplace' ? (
           <section className="space-y-4">
             <div className="glass-panel rounded-2xl p-4 sm:p-5">
-              <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-base font-semibold">Temukan MCP Server</h2><p className="mt-1 text-xs text-slate-400">Katalog konektor pilihan. Periksa metode autentikasi sebelum menghubungkan.</p></div><span className="rounded-full bg-violet-300/10 px-3 py-1 text-[11px] text-violet-100">MCP Directory</span></div>
-              <div className="relative mt-4"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"/><input value={marketQuery} onChange={e => setMarketQuery(e.target.value)} placeholder="Cari GitHub, database, browser..." className="glass-input w-full rounded-xl py-3 pl-10 pr-3 text-sm"/></div>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div><h2 className="text-base font-semibold">MCP Marketplace</h2><p className="mt-1 text-xs text-slate-400">Discovery multi-provider: Official Registry, community directory, dan GitHub.</p></div>
+                <div className="text-right"><div className="text-lg font-semibold text-white">{marketTotal.toLocaleString('id-ID')}</div><div className="text-[10px] text-slate-500">server ditemukan</div></div>
+              </div>
+              <div className="mt-4 grid gap-2 sm:grid-cols-[1fr_190px]">
+                <div className="relative"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"/><input value={marketQuery} onChange={e => setMarketQuery(e.target.value)} placeholder="Cari GitHub, database, browser..." className="glass-input w-full rounded-xl py-3 pl-10 pr-3 text-sm"/></div>
+                <select value={marketProvider} onChange={e => setMarketProvider(e.target.value)} className="glass-input rounded-xl px-3 py-2 text-xs text-white">
+                  <option value="all" className="bg-slate-900">Semua provider</option><option value="official" className="bg-slate-900">Official Registry</option><option value="community" className="bg-slate-900">Community Directory</option><option value="github" className="bg-slate-900">GitHub</option>
+                </select>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {marketCategories.map(cat => <button key={cat} type="button" onClick={() => setMarketCategory(cat)} className={`rounded-full px-3 py-1.5 text-[11px] ${marketCategory === cat ? 'bg-indigo-300/20 text-indigo-100 ring-1 ring-indigo-200/30' : 'bg-white/[.05] text-slate-400 hover:bg-white/10'}`}>{cat}</button>)}
+              </div>
+              <div className="mt-3 flex items-center justify-between text-[11px] text-slate-500"><span>{marketLoading ? 'Memuat dari provider...' : marketPartial ? 'Sebagian provider belum merespons' : 'Katalog diperbarui langsung dari sumber provider'}</span><button type="button" onClick={loadMarketplace} className="inline-flex items-center gap-1 rounded-lg bg-white/10 px-2.5 py-1.5 text-slate-200"><RefreshCw className={`h-3 w-3 ${marketLoading ? 'animate-spin' : ''}`}/> Refresh</button></div>
             </div>
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              {[
-                {name:'GitHub MCP',category:'Developer tools',desc:'Akses repository, issue, pull request, dan workflow GitHub.',endpoint:'https://api.githubcopilot.com/mcp/',transport:'streamable_http' as const,auth:'bearer' as const,Icon:Github,tag:'GitHub'},
-                {name:'Custom MCP Server',category:'Universal',desc:'Hubungkan server MCP milikmu melalui Streamable HTTP atau SSE.',endpoint:'',transport:'streamable_http' as const,auth:'none' as const,Icon:Globe,tag:'Custom'},
-                {name:'Database MCP',category:'Data',desc:'Template konektor database. Gunakan endpoint resmi dari penyedia database.',endpoint:'',transport:'streamable_http' as const,auth:'header' as const,Icon:Database,tag:'Template'},
-                {name:'Cloud MCP',category:'Infrastructure',desc:'Template konektor layanan cloud dengan autentikasi header khusus.',endpoint:'',transport:'streamable_http' as const,auth:'header' as const,Icon:Cloud,tag:'Template'}
-              ].filter(item => `${item.name} ${item.category} ${item.desc}`.toLowerCase().includes(marketQuery.toLowerCase())).map(item => <article key={item.name} className="glass-card flex flex-col rounded-2xl p-4 transition hover:-translate-y-0.5 hover:border-indigo-200/30"><div className="flex items-start justify-between"><div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-300/20 to-sky-300/10 text-indigo-100"><item.Icon className="h-5 w-5"/></div><span className="rounded-full bg-white/[.06] px-2.5 py-1 text-[10px] text-slate-300">{item.tag}</span></div><h3 className="mt-4 text-sm font-semibold">{item.name}</h3><p className="mt-1 text-[11px] text-indigo-200">{item.category}</p><p className="mt-2 flex-1 text-xs leading-5 text-slate-400">{item.desc}</p><button type="button" onClick={() => {setDisplayName(item.name);setEndpoint(item.endpoint);setTransport(item.transport);setAuthType(item.auth);setCustomHeaderName('Authorization');setSecret('');setTab('external');}} className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-indigo-300 to-sky-300 px-3 py-2.5 text-xs font-semibold text-slate-950">Konfigurasi koneksi <ArrowUpRight className="h-3.5 w-3.5"/></button></article>)}
-            </div>
-            <p className="text-[11px] leading-5 text-slate-500">Catatan: katalog ini berisi template konektor, bukan klaim bahwa seluruh server sudah diverifikasi atau mendukung OAuth otomatis. OAuth belum diimplementasikan pada backend saat ini.</p>
+            {marketLoading && marketItems.length === 0 ? <div className="glass-panel rounded-2xl p-8 text-center text-xs text-slate-400">Menghubungkan ke provider MCP...</div> : marketItems.length === 0 ? <div className="glass-panel rounded-2xl p-8 text-center text-xs text-slate-400">Tidak ada server ditemukan. Coba provider atau kata kunci lain.</div> : (
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                {marketItems.map(item => <article key={item.id} className="glass-card flex min-w-0 flex-col rounded-2xl p-4 transition hover:border-indigo-200/30">
+                  <div className="flex items-start justify-between gap-2"><div className="min-w-0"><h3 className="truncate text-sm font-semibold text-white">{item.name}</h3><p className="mt-1 text-[10px] text-indigo-200">{item.category}</p></div><span className="shrink-0 rounded-full bg-white/[.06] px-2 py-1 text-[9px] text-slate-300">{item.verified ? 'Registry active' : 'Community'}</span></div>
+                  <p className="mt-3 line-clamp-3 flex-1 text-xs leading-5 text-slate-400">{item.description}</p>
+                  <div className="mt-3 flex flex-wrap gap-1.5"><span className="rounded-md bg-white/[.06] px-2 py-1 text-[9px] text-slate-300">{item.source}</span><span className="rounded-md bg-white/[.06] px-2 py-1 text-[9px] text-slate-300">{item.version}</span>{item.transport.slice(0,2).map(t => <span key={t} className="rounded-md bg-white/[.06] px-2 py-1 text-[9px] text-slate-300">{t}</span>)}</div>
+                  <div className="mt-4 flex flex-wrap gap-2">{item.repositoryUrl && <a href={item.repositoryUrl} target="_blank" rel="noreferrer" className="rounded-lg bg-white/10 px-3 py-2 text-[10px] text-slate-200 hover:bg-white/15">Repository ↗</a>}{item.websiteUrl && <a href={item.websiteUrl} target="_blank" rel="noreferrer" className="rounded-lg bg-white/10 px-3 py-2 text-[10px] text-slate-200 hover:bg-white/15">Docs ↗</a>}</div>
+                </article>)}
+              </div>
+            )}
+            <p className="text-[11px] leading-5 text-slate-500">Discovery mengambil metadata dari beberapa katalog. Belum semua listing menyediakan remote HTTP endpoint; server berbasis stdio perlu proses runtime/host tersendiri. Jangan masukkan token sebelum memastikan endpoint dan publisher benar.</p>
           </section>
         ) : tab === 'external' ? (
           <div className="grid gap-5 lg:grid-cols-3">
