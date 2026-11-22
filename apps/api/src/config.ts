@@ -1,4 +1,10 @@
+import crypto from 'node:crypto';
 import { z } from 'zod';
+
+const PROD_DEV_SECRETS = new Set([
+  'dev-session-secret-change-in-production',
+  '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+]);
 
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'staging', 'production', 'test']).default('development'),
@@ -42,9 +48,34 @@ export type AppConfig = z.infer<typeof envSchema> & {
   isProd: boolean;
 };
 
+/**
+ * Fails fast in production when required secrets are missing or still set to
+ * the documented development defaults. Root cause fixed here: previous config
+ * booted successfully with empty/default credentials, so the app started and
+ * then failed with confusing runtime errors instead of a clear startup error.
+ */
+function assertProductionSecrets(parsed: z.infer<typeof envSchema>): void {
+  const problems: string[] = [];
+
+  if (!parsed.APP_PASSWORD_HASH) problems.push('APP_PASSWORD_HASH belum diisi');
+  if (!parsed.ROUTER_API_KEY) problems.push('ROUTER_API_KEY belum diisi');
+  if (!parsed.SUPABASE_URL) problems.push('SUPABASE_URL belum diisi');
+  if (!parsed.SUPABASE_SERVICE_ROLE_KEY) problems.push('SUPABASE_SERVICE_ROLE_KEY belum diisi');
+  if (PROD_DEV_SECRETS.has(parsed.APP_SESSION_SECRET)) problems.push('APP_SESSION_SECRET masih memakai nilai default');
+  if (PROD_DEV_SECRETS.has(parsed.APP_ENCRYPTION_KEY)) problems.push('APP_ENCRYPTION_KEY masih memakai nilai default');
+
+  if (problems.length > 0) {
+    throw new Error(
+      `Konfigurasi LEVHUB tidak aman untuk production:\n- ${problems.join('\n- ')}\n` +
+      'Set variabel environment yang benar sebelum menjalankan mode production.',
+    );
+  }
+}
+
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const parsed = envSchema.parse(env);
   const isProd = parsed.NODE_ENV === 'production';
+  if (isProd) assertProductionSecrets(parsed);
   return {
     ...parsed,
     COOKIE_SECURE: isProd ? true : parsed.COOKIE_SECURE,
@@ -54,3 +85,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     isProd,
   };
 }
+
+export { PROD_DEV_SECRETS };
+
+// Re-exported for tests that need a deterministic id source without touching env.
+export const __testing = { assertProductionSecrets, envSchema, crypto };
