@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   MessageSquarePlus, Cpu, Plug, Sparkles, History, Settings, LogOut,
-  Menu, X, Activity, ChevronRight, Command,
+  Menu, X, Activity, ChevronRight, Command, MoreHorizontal,
 } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 
@@ -127,13 +127,13 @@ export function AppShell({ title, topBarExtra, children }: {
             <div className="flex shrink-0 items-center gap-2">{topBarExtra}<div className="hidden h-8 w-8 items-center justify-center rounded-xl border border-white/[.08] bg-white/[.04] text-slate-400 sm:flex"><Command className="h-3.5 w-3.5"/></div></div>
           </div>
         </header>
-        <main className="mx-auto flex min-h-[calc(100vh-68px)] w-full max-w-[1440px] flex-col px-4 py-5 sm:px-6 sm:py-6 lg:px-8 lg:py-8">{children}</main>
+        <main className="mx-auto flex min-h-[calc(100vh-68px)] w-full max-w-[1440px] flex-col px-4 pb-28 pt-5 sm:px-6 sm:pb-28 sm:pt-6 lg:px-8 lg:py-8">{children}</main>
       </div>
 
-      <nav aria-label="Navigasi cepat" className="fixed inset-x-0 bottom-0 z-40 border-t border-white/[.08] bg-[#090e18]/95 px-2 pb-[max(env(safe-area-inset-bottom),8px)] pt-2 backdrop-blur-2xl lg:hidden">
-        <div className="mx-auto grid max-w-lg grid-cols-5 gap-1">
-          {MOBILE_NAV.map(item => { const Icon=item.icon; const active=pathname===item.href||pathname.startsWith(`${item.href}/`); return <Link key={item.href} href={item.href} className={`flex flex-col items-center gap-1 rounded-xl px-1 py-1.5 ${active?'text-sky-200':'text-slate-500'}`}><span className={`flex h-7 w-9 items-center justify-center rounded-xl ${active?'bg-sky-300/15':''}`}><Icon className="h-[17px] w-[17px]"/></span><span className="text-[9px] font-medium">{item.href==='/chat'?'Chat':item.href==='/models'?'Models':item.href==='/mcp'?'MCP':'Skills'}</span></Link>; })}
-          <button type="button" onClick={() => setMobileOpen(true)} className="flex flex-col items-center gap-1 rounded-xl px-1 py-1.5 text-slate-500"><span className="flex h-7 w-9 items-center justify-center"><Menu className="h-[17px] w-[17px]"/></span><span className="text-[9px] font-medium">Menu</span></button>
+      <nav aria-label="Navigasi utama" className="levhub-floating-dock fixed bottom-[max(14px,env(safe-area-inset-bottom))] left-1/2 z-50 w-[min( calc(100vw - 28px), 470px)] -translate-x-1/2 rounded-[28px] p-1.5 lg:hidden">
+        <div className="grid grid-cols-5 items-stretch gap-1">
+          {MOBILE_NAV.map(item => { const Icon=item.icon; const active=pathname===item.href||pathname.startsWith(`${item.href}/`); return <Link key={item.href} href={item.href} aria-current={active ? 'page' : undefined} className={`dock-item flex min-h-[58px] flex-col items-center justify-center gap-1 rounded-[21px] px-1 py-1.5 ${active?'dock-item-active text-sky-100':'text-slate-400 hover:text-white'}`}><span className="flex h-7 w-9 items-center justify-center"><Icon className="h-[19px] w-[19px]" strokeWidth={active?2.25:1.8}/></span><span className="text-[10px] font-medium tracking-tight">{item.href==='/chat'?'Chat':item.href==='/models'?'Models':item.href==='/mcp'?'MCP':'Skills'}</span></Link>; })}
+          <button type="button" onClick={() => setMobileOpen(true)} aria-label="Buka menu lainnya" className="dock-item flex min-h-[58px] flex-col items-center justify-center gap-1 rounded-[21px] px-1 py-1.5 text-slate-400 hover:text-white"><span className="flex h-7 w-9 items-center justify-center"><MoreHorizontal className="h-[21px] w-[21px]"/></span><span className="text-[10px] font-medium tracking-tight">Menu</span></button>
         </div>
       </nav>
     </div>
