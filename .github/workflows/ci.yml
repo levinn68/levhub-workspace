@@ -22,9 +22,9 @@ jobs:
         with:
           node-version: 20
           cache: npm
-      - name: Install (workspace root)
-        working-directory: .
-        run: npm ci
+          cache-dependency-path: apps/api/package-lock.json
+      - name: Install
+        run: npm install --no-audit --no-fund
       - name: TypeScript build
         run: npm run build
       - name: Tests
@@ -41,9 +41,9 @@ jobs:
         with:
           node-version: 20
           cache: npm
-      - name: Install (workspace root)
-        working-directory: .
-        run: npm ci
+          cache-dependency-path: apps/web/package-lock.json
+      - name: Install
+        run: npm install --no-audit --no-fund
       - name: Production build
         run: npm run build
         env:
