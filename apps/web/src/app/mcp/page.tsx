@@ -324,8 +324,7 @@ export default function McpHubPage() {
                     </span>
                   </div>
                 </div>
-              ))
-            )}
+              ))}
           </div>
         )}
       </div>
