@@ -604,10 +604,6 @@ app.get('/api/settings', async (req, reply) => {
         endpoint: config.ROUTER_BASE_URL,
         hasApiKey: Boolean(config.ROUTER_API_KEY),
       },
-      runtime: {
-        endpoint: config.OVERDRIVE_BASE_URL || null,
-        hasToken: Boolean(config.OVERDRIVE_API_TOKEN),
-      },
       supabase: {
         configured: repo.isConfigured(),
         bucket: config.SUPABASE_STORAGE_BUCKET,
