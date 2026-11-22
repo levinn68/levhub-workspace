@@ -314,7 +314,8 @@ export default function McpHubPage() {
             )}
           </section>
         ) : (
-              runtimeServers.map((srv) => (
+          <div className="space-y-3">
+              {runtimeServers.map((srv) => (
                 <div key={srv.id} className="glass-card rounded-2xl p-4">
                   <div className="flex items-center justify-between">
                     <p className="text-sm font-semibold text-white">{srv.name}</p>
