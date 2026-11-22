@@ -3,7 +3,6 @@ import type { AppConfig } from '../config.js';
 import type { ChatStreamEvent, ToolSchema } from '../types.js';
 import type { LevhubRepository } from '../db/supabase.js';
 import type { RouterAdapter, ChatCompletionMessage } from '../adapters/routerAdapter.js';
-import type { OverdriveAdapter } from '../adapters/overdriveAdapter.js';
 import type { ExternalMcpAdapter, ExternalMcpConnectionConfig } from '../adapters/externalMcpAdapter.js';
 import type { SkillAdapter } from '../adapters/skillAdapter.js';
 import { decryptSecret } from '../security/crypto.js';
@@ -18,7 +17,6 @@ export class ChatOrchestrator {
     private readonly config: AppConfig,
     private readonly repo: LevhubRepository,
     private readonly router: RouterAdapter,
-    private readonly overdrive: OverdriveAdapter,
     private readonly externalMcp: ExternalMcpAdapter,
     private readonly skillAdapter: SkillAdapter,
   ) {}
@@ -54,17 +52,6 @@ export class ChatOrchestrator {
         } catch {
           // Degrade gracefully if one external MCP is offline
         }
-      }
-    }
-
-    if (this.overdrive.isConfigured()) {
-      try {
-        const runtimeServers = await this.overdrive.listMcpServers();
-        for (const srv of runtimeServers) {
-          tools.push(...srv.tools);
-        }
-      } catch {
-        // Degrade gracefully if runtime is temporarily offline
       }
     }
 
@@ -282,10 +269,6 @@ export class ChatOrchestrator {
     args: Record<string, unknown>,
     externalConfigs: Map<string, ExternalMcpConnectionConfig>,
   ): Promise<string> {
-    if (schema.source === 'overdrive_mcp') {
-      const res = await this.overdrive.executeMcpTool(schema.integrationId, schema.name, args);
-      return res.output;
-    }
     if (schema.source === 'external_mcp') {
       const conn = externalConfigs.get(schema.integrationId);
       if (!conn) throw new LevhubError('MCP_CONNECT_FAILED', 'Konfigurasi MCP eksternal tidak ditemukan.', 404);
