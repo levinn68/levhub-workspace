@@ -130,21 +130,40 @@ export default function McpHubPage() {
     } finally { setMarketLoading(false); }
   }
 
-  function openMarketplaceConnect(item: MarketplaceItem) {
+  async function openMarketplaceConnect(item: MarketplaceItem) {
     const install = (item.install || {}) as any;
     const remotes = Array.isArray(install.remotes) ? install.remotes : [];
     const remote = remotes.find((r: any) => typeof r?.url === 'string' || typeof r?.endpoint === 'string') || null;
-    // Only accept an explicitly declared remote MCP endpoint; catalog and docs URLs are not endpoints.
-    const declaredEndpoint = remote?.url || remote?.endpoint || install.remoteUrl || '';
-    const endpointCandidate = typeof declaredEndpoint === 'string' && !declaredEndpoint.includes('hostedmcp.org/servers/') ? declaredEndpoint : '';
-    const transportValue = String(remote?.type || install.transport || 'streamable_http').toLowerCase();
+    let declaredEndpoint = remote?.url || remote?.endpoint || install.remoteUrl || '';
+    let transportValue = String(remote?.type || install.transport || 'streamable_http').toLowerCase();
+    let detail: any = null;
+
+    // HostedMCP list entries are summaries. Resolve the full server record before asking the user to configure anything.
+    if (!declaredEndpoint && item.id.startsWith('hosted:')) {
+      try {
+        const slug = item.id.slice('hosted:'.length);
+        detail = await apiFetch<any>(`/api/mcp/marketplace/detail?slug=${encodeURIComponent(slug)}`);
+        declaredEndpoint = detail.endpoint || '';
+        transportValue = String(detail.transport || transportValue).toLowerCase();
+      } catch {
+        // Keep the item visible, but never mistake its catalog or repository URL for an MCP endpoint.
+      }
+    }
+
+    const endpointCandidate = typeof declaredEndpoint === 'string' && /^https:\/\//i.test(declaredEndpoint) ? declaredEndpoint : '';
+    const packages = detail?.packages || install.packages || [];
+    const hasLocalInstall = Array.isArray(packages) && packages.length > 0;
     setDisplayName(item.name);
     setEndpoint(endpointCandidate);
     setTransport(transportValue.includes('sse') ? 'sse' : 'streamable_http');
     setAuthType('none');
     setSecret('');
     setCustomHeaderName('Authorization');
-    setConnectError(!endpointCandidate ? (item.transport.some(t => t.toLowerCase() === 'stdio') ? 'Server ini hanya menyediakan paket lokal/STDIO. Runtime lokal belum tersedia, jadi koneksi remote langsung belum bisa dibuat.' : 'Endpoint remote tidak tersedia di metadata katalog. Masukkan URL MCP endpoint dari penyedia server.') : null);
+    setConnectError(!endpointCandidate
+      ? hasLocalInstall || item.transport.some(t => t.toLowerCase() === 'stdio')
+        ? 'Server ini hanya menyediakan instalasi lokal (STDIO/package). LEVHUB belum memiliki local MCP runtime, jadi server ini belum bisa dihubungkan langsung. Gunakan Repository untuk petunjuk instalasi.'
+        : 'Katalog belum menyediakan remote endpoint yang dapat dipakai. URL repositori atau halaman katalog bukan endpoint MCP dan tidak boleh dimasukkan sebagai pengganti.'
+      : null);
     setConnectItem(item);
   }
 
@@ -245,12 +264,12 @@ export default function McpHubPage() {
               <div className="flex items-start justify-between gap-3"><div><h2 id="mcp-connect-title" className="text-base font-semibold text-white">Connect {connectItem.name}</h2><p className="mt-1 text-xs text-slate-400">Tambahkan server ini ke koneksi MCP LEVHUB.</p></div><button type="button" onClick={() => setConnectItem(null)} className="rounded-lg bg-white/10 px-2 py-1 text-xs text-slate-300">Tutup</button></div>
               {connectError && <div className="rounded-xl border border-amber-300/20 bg-amber-300/10 p-3 text-xs text-amber-100">{connectError}</div>}
               <label className="block text-xs text-slate-300">Nama koneksi<input required value={displayName} onChange={e => setDisplayName(e.target.value)} className="glass-input mt-1 w-full rounded-xl px-3 py-2 text-sm text-white"/></label>
-              <label className="block text-xs text-slate-300">MCP endpoint URL<input required type="url" value={endpoint} onChange={e => setEndpoint(e.target.value)} placeholder="https://server.example.com/mcp" className="glass-input mt-1 w-full rounded-xl px-3 py-2 text-sm text-white"/></label>
+              {endpoint ? <label className="block text-xs text-slate-300">MCP endpoint URL<input required type="url" value={endpoint} onChange={e => setEndpoint(e.target.value)} placeholder="https://server.example.com/mcp" className="glass-input mt-1 w-full rounded-xl px-3 py-2 text-sm text-white"/></label> : <div className="rounded-xl border border-white/10 bg-white/[.03] p-3 text-xs leading-5 text-slate-400">Koneksi langsung tidak tersedia untuk listing ini. LEVHUB tidak akan meminta URL katalog atau URL GitHub sebagai endpoint palsu. Gunakan Repository untuk melihat cara menjalankan server, atau pilih server yang menyediakan Remote MCP.</div>}
               <div className="grid grid-cols-2 gap-2"><label className="text-xs text-slate-300">Transport<select value={transport} onChange={e => setTransport(e.target.value as 'streamable_http' | 'sse')} className="glass-input mt-1 w-full rounded-xl px-3 py-2 text-xs text-white"><option value="streamable_http" className="bg-slate-900">Streamable HTTP</option><option value="sse" className="bg-slate-900">SSE (legacy)</option></select></label><label className="text-xs text-slate-300">Autentikasi<select value={authType} onChange={e => setAuthType(e.target.value as 'none' | 'bearer' | 'header')} className="glass-input mt-1 w-full rounded-xl px-3 py-2 text-xs text-white"><option value="none" className="bg-slate-900">Tanpa auth</option><option value="bearer" className="bg-slate-900">Bearer token</option><option value="header" className="bg-slate-900">Custom header</option></select></label></div>
               {authType === 'header' && <input value={customHeaderName} onChange={e => setCustomHeaderName(e.target.value)} placeholder="X-API-Key" className="glass-input w-full rounded-xl px-3 py-2 text-xs text-white"/>}
               {authType !== 'none' && <input type="password" value={secret} onChange={e => setSecret(e.target.value)} placeholder="API key / token" className="glass-input w-full rounded-xl px-3 py-2 text-xs text-white"/>}
               <p className="text-[10px] leading-4 text-slate-500">Token disimpan terenkripsi. Setelah ditambahkan, jalankan Tes koneksi di tab External MCP sebelum mengaktifkannya.</p>
-              <div className="flex justify-end gap-2"><button type="button" onClick={() => setConnectItem(null)} className="rounded-xl bg-white/10 px-4 py-2 text-xs text-slate-200">Batal</button><button type="submit" className="rounded-xl bg-indigo-400 px-4 py-2 text-xs font-semibold text-slate-950">Simpan &amp; Connect</button></div>
+              <div className="flex justify-end gap-2"><button type="button" onClick={() => setConnectItem(null)} className="rounded-xl bg-white/10 px-4 py-2 text-xs text-slate-200">Batal</button><button type="submit" disabled={!endpoint.trim()} className="rounded-xl bg-indigo-400 px-4 py-2 text-xs font-semibold text-slate-950 disabled:cursor-not-allowed disabled:opacity-40">{endpoint ? 'Simpan & Connect' : 'Endpoint belum tersedia'}</button></div>
             </form>
           </div>
         )}
