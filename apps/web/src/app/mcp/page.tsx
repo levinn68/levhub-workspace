@@ -138,15 +138,21 @@ export default function McpHubPage() {
     let transportValue = String(remote?.type || install.transport || 'streamable_http').toLowerCase();
     let detail: any = null;
 
-    // HostedMCP list entries are summaries. Resolve the full server record before asking the user to configure anything.
-    if (!declaredEndpoint && item.id.startsWith('hosted:')) {
+    // Resolve full connection metadata for HostedMCP and GitHub community listings.
+    // GitHub repository URLs identify the package, not the MCP endpoint; use owner/name
+    // only as a catalog lookup key and always take the endpoint from catalog metadata.
+    let catalogSlug = item.id.startsWith('hosted:') ? item.id.slice('hosted:'.length) : '';
+    if (!catalogSlug && item.repositoryUrl) {
+      const match = item.repositoryUrl.match(/^https?:\\/\\/(?:www\\.)?github\\.com\\/([^/?#]+)\\/([^/?#]+)(?:\\.git)?(?:[/?#]|$)/i);
+      if (match) catalogSlug = `${match[1]}/${match[2].replace(/\\.git$/i, '')}`;
+    }
+    if (!declaredEndpoint && catalogSlug) {
       try {
-        const slug = item.id.slice('hosted:'.length);
-        detail = await apiFetch<any>(`/api/mcp/marketplace/detail?slug=${encodeURIComponent(slug)}`);
+        detail = await apiFetch<any>(`/api/mcp/marketplace/detail?slug=${encodeURIComponent(catalogSlug)}`);
         declaredEndpoint = detail.endpoint || '';
         transportValue = String(detail.transport || transportValue).toLowerCase();
       } catch {
-        // Keep the item visible, but never mistake its catalog or repository URL for an MCP endpoint.
+        // A repository URL is never treated as an MCP endpoint.
       }
     }
 
@@ -154,6 +160,10 @@ export default function McpHubPage() {
     const authHints = [...(Array.isArray(item.auth) ? item.auth : []), ...(Array.isArray(detail?.auth) ? detail.auth : [])].join(' ').toLowerCase();
     const requiresCredentials = /oauth|bearer|token|api.?key|header|environment variable|credential|auth required/.test(authHints);
     const packages = detail?.packages || install.packages || [];
+    const envNames = (detail?.environmentVariables || []).map((entry: any) => String(entry?.name || '')).join(' ').toLowerCase();
+    const suggestedHeader = /browser_use_api_key/.test(envNames) || /browser-use/.test(item.name.toLowerCase())
+      ? 'X-Browser-Use-API-Key'
+      : /api.?key/.test(authHints) ? 'X-API-Key' : 'Authorization';
 
     // A catalog entry with a real remote endpoint and no declared credentials
     // should connect in one click, not open a redundant manual configuration form.
@@ -185,9 +195,9 @@ export default function McpHubPage() {
     setDisplayName(item.name);
     setEndpoint(endpointCandidate);
     setTransport(transportValue.includes('sse') ? 'sse' : 'streamable_http');
-    setAuthType('none');
+    setAuthType(/api.?key/.test(authHints) ? 'header' : /bearer|oauth|token/.test(authHints) ? 'bearer' : 'none');
     setSecret('');
-    setCustomHeaderName('Authorization');
+    setCustomHeaderName(suggestedHeader);
     setConnectError(!endpointCandidate
       ? hasLocalInstall || item.transport.some(t => t.toLowerCase() === 'stdio')
         ? 'Server ini hanya menyediakan instalasi lokal (STDIO/package). LEVHUB belum memiliki local MCP runtime, jadi server ini belum bisa dihubungkan langsung. Gunakan Repository untuk petunjuk instalasi.'
@@ -290,7 +300,7 @@ export default function McpHubPage() {
         {connectItem && (
           <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-4" role="dialog" aria-modal="true" aria-labelledby="mcp-connect-title">
             <form onSubmit={submitMarketplaceConnect} className="glass-panel w-full max-w-lg space-y-3 rounded-2xl border border-indigo-200/20 p-5 shadow-2xl">
-              <div className="flex items-start justify-between gap-3"><div><h2 id="mcp-connect-title" className="text-base font-semibold text-white">{endpoint ? `Hubungkan ${connectItem.name}` : `Koneksi belum tersedia`}</h2><p className="mt-1 text-xs text-slate-400">{endpoint ? "Endpoint remote ditemukan. Lengkapi autentikasi jika diperlukan." : connectItem.name}</p></div><button type="button" onClick={() => setConnectItem(null)} className="rounded-lg bg-white/10 px-2 py-1 text-xs text-slate-300">Tutup</button></div>
+              <div className="flex items-start justify-between gap-3"><div><h2 id="mcp-connect-title" className="text-base font-semibold text-white">{endpoint ? `Hubungkan ${connectItem.name}` : `Koneksi belum tersedia`}</h2><p className="mt-1 text-xs text-slate-400">{endpoint ? "Endpoint Remote MCP ditemukan. Masukkan kredensial yang diminta server jika diperlukan." : connectItem.name}</p></div><button type="button" onClick={() => setConnectItem(null)} className="rounded-lg bg-white/10 px-2 py-1 text-xs text-slate-300">Tutup</button></div>
               {endpoint && connectError && <div className="rounded-xl border border-amber-300/20 bg-amber-300/10 p-3 text-xs text-amber-100">{connectError}</div>}
               {endpoint ? <>
                 <label className="block text-xs text-slate-300">Nama koneksi<input required value={displayName} onChange={e => setDisplayName(e.target.value)} className="glass-input mt-1 w-full rounded-xl px-3 py-2 text-sm text-white"/></label>
