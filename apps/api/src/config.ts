@@ -28,6 +28,8 @@ const envSchema = z.object({
   SUPABASE_URL: z.string().default(''),
   SUPABASE_SERVICE_ROLE_KEY: z.string().default(''),
   SUPABASE_STORAGE_BUCKET: z.string().default('levhub-skills'),
+  SUPABASE_CHAT_BUCKET: z.string().default('levhub-chat-files'),
+  MAX_CHAT_ATTACHMENT_BYTES: z.coerce.number().int().min(1024).max(104857600).default(104857600),
 
   MAX_TOOL_CALLS_PER_TURN: z.coerce.number().int().min(1).max(20).default(6),
   TOOL_EXECUTION_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120000).default(25000),
