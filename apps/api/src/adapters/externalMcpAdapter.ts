@@ -2,7 +2,7 @@ import {
   Client,
   SSEClientTransport,
   StreamableHTTPClientTransport,
-} from '@modelcontextprotocol/client';
+} from './mcpClient.js';
 import type { AppConfig } from '../config.js';
 import type { ToolSchema } from '../types.js';
 import { LevhubError } from '../security/errors.js';
