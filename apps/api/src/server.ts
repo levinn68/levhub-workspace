@@ -8,7 +8,6 @@ import { z } from 'zod';
 import { loadConfig } from './config.js';
 import { LevhubRepository } from './db/supabase.js';
 import { RouterAdapter } from './adapters/routerAdapter.js';
-import { OverdriveAdapter } from './adapters/overdriveAdapter.js';
 import { ExternalMcpAdapter, type ExternalMcpConnectionConfig } from './adapters/externalMcpAdapter.js';
 import { SkillAdapter } from './adapters/skillAdapter.js';
 import { ChatOrchestrator } from './services/chatOrchestrator.js';
@@ -36,10 +35,9 @@ const CSRF_COOKIE_NAME = 'levhub_csrf';
 const config = loadConfig();
 const repo = new LevhubRepository(config);
 const router = new RouterAdapter(config);
-const overdrive = new OverdriveAdapter(config);
 const externalMcp = new ExternalMcpAdapter(config);
-const skillAdapter = new SkillAdapter(config, overdrive);
-const chatOrchestrator = new ChatOrchestrator(config, repo, router, overdrive, externalMcp, skillAdapter);
+const skillAdapter = new SkillAdapter(config);
+const chatOrchestrator = new ChatOrchestrator(config, repo, router, externalMcp, skillAdapter);
 
 const app = Fastify({
   logger: {
@@ -131,9 +129,8 @@ function maskIntegration(item: {
 // ============================================================================
 
 app.get('/api/health', async () => {
-  const [routerHealth, runtimeHealth, dbHealth] = await Promise.all([
+  const [routerHealth, dbHealth] = await Promise.all([
     router.healthCheck(),
-    Promise.resolve({ ok: true, latencyMs: 0, message: 'Runtime eksternal dinonaktifkan' }),
     repo.healthCheck(),
   ]);
 
@@ -144,7 +141,6 @@ app.get('/api/health', async () => {
     checkedAt: new Date().toISOString(),
     dependencies: {
       router: routerHealth,
-      runtime: runtimeHealth,
       supabase: dbHealth,
     },
   };
@@ -374,7 +370,7 @@ app.get('/api/mcp', async (req, reply) => {
   await requireSession(req, reply);
   const [saved, runtimeServers] = await Promise.all([
     repo.isConfigured() ? repo.listIntegrations('mcp') : Promise.resolve([]),
-    overdrive.isConfigured() ? overdrive.listMcpServers().catch(() => []) : Promise.resolve([]),
+    Promise.resolve([]),
   ]);
 
   return {
@@ -500,7 +496,7 @@ app.get('/api/skills', async (req, reply) => {
   await requireSession(req, reply);
   const [imported, runtimeSkills] = await Promise.all([
     repo.isConfigured() ? repo.listSkills() : Promise.resolve([]),
-    overdrive.isConfigured() ? overdrive.listSkills().catch(() => []) : Promise.resolve([]),
+    Promise.resolve([]),
   ]);
   return { runtimeSkills, importedSkills: imported };
 });
