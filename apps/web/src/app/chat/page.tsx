@@ -490,7 +490,7 @@ function ChatWorkspaceInner() {
           ) : (
             <button
               type="submit"
-              disabled={!draft.trim() || !selectedModel}
+              disabled={(!draft.trim() && pendingAttachments.length === 0) || !selectedModel || uploadingFiles}
               aria-label="Kirim pesan"
               className="flex h-11 items-center gap-1.5 rounded-xl bg-gradient-to-r from-sky-400 to-indigo-400 px-4 text-xs font-semibold text-slate-950 shadow-glow transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
             >
