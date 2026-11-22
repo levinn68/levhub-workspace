@@ -136,7 +136,7 @@ export default function McpHubPage() {
     const remote = remotes.find((r: any) => typeof r?.url === 'string' || typeof r?.endpoint === 'string') || null;
     // Only accept an explicitly declared remote MCP endpoint; catalog and docs URLs are not endpoints.
     const declaredEndpoint = remote?.url || remote?.endpoint || install.remoteUrl || '';
-    const endpointCandidate = typeof declaredEndpoint === 'string' && !/hostedmcp\\.org\\/servers\\//i.test(declaredEndpoint) ? declaredEndpoint : '';
+    const endpointCandidate = typeof declaredEndpoint === 'string' && !declaredEndpoint.includes('hostedmcp.org/servers/') ? declaredEndpoint : '';
     const transportValue = String(remote?.type || install.transport || 'streamable_http').toLowerCase();
     setDisplayName(item.name);
     setEndpoint(endpointCandidate);
