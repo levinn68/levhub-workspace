@@ -58,10 +58,12 @@ export class ExternalMcpAdapter {
       signal: AbortSignal.timeout(timeoutMs),
     };
 
-    const client = new Client({
-      name: 'LEVHUB',
-      version: '1.0.0',
-    });
+    // Client constructor signature is (clientInfo, options). Passing a single
+    // object is what CI flagged as "Expected 2 arguments, but got 1".
+    const client = new Client(
+      { name: 'LEVHUB', version: '1.0.0' },
+      { capabilities: {} },
+    );
 
     const transport = conn.transport === 'sse'
       ? new SSEClientTransport(endpoint, { requestInit })
@@ -173,7 +175,7 @@ export class ExternalMcpAdapter {
       client.callTool({ name: toolName, arguments: args }),
     );
 
-    const structured = result as {
+    const structured = result as unknown as {
       content?: Array<{ type?: string; text?: string }>;
       structuredContent?: unknown;
       isError?: boolean;
