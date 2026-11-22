@@ -106,7 +106,8 @@ export default function McpHubPage() {
   async function submitMarketplaceConnect(e: React.FormEvent) {
     e.preventDefault();
     if (!endpoint.trim()) { setConnectError('URL MCP endpoint wajib diisi.'); return; }
-    await handleAddExternal(e);
+    const created = await handleAddExternal(e);
+    if (created?.id) await handleTest(created.id);
     setConnectItem(null);
     setTab('external');
   }
@@ -115,7 +116,7 @@ export default function McpHubPage() {
     e.preventDefault();
     setFeedback(null);
     try {
-      await apiFetch('/api/mcp/external', {
+      const created = await apiFetch<ExternalMcpItem>('/api/mcp/external', {
         method: 'POST',
         body: JSON.stringify({ displayName, endpoint, transport, authType, secret: secret || undefined, customHeaderName: authType === 'header' ? customHeaderName : undefined }),
       });
@@ -125,8 +126,10 @@ export default function McpHubPage() {
       setCustomHeaderName('Authorization');
       setFeedback('Koneksi MCP eksternal berhasil ditambahkan (secret terenkripsi di server).');
       await loadMcp();
+      return created;
     } catch (err) {
       setFeedback(err instanceof Error ? err.message : 'Gagal menambahkan MCP eksternal.');
+      return null;
     }
   }
 
