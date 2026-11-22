@@ -52,6 +52,8 @@ export default function McpHubPage() {
   const [marketTotal, setMarketTotal] = useState(0);
   const [marketLoading, setMarketLoading] = useState(false);
   const [marketPartial, setMarketPartial] = useState(false);
+  const [connectItem, setConnectItem] = useState<MarketplaceItem | null>(null);
+  const [connectError, setConnectError] = useState<string | null>(null);
 
   async function loadMcp() {
     setLoading(true);
@@ -83,6 +85,30 @@ export default function McpHubPage() {
     } catch (err) {
       setFeedback(err instanceof Error ? err.message : 'Gagal memuat katalog MCP.');
     } finally { setMarketLoading(false); }
+  }
+
+  function openMarketplaceConnect(item: MarketplaceItem) {
+    const install = (item.install || {}) as any;
+    const remotes = Array.isArray(install.remotes) ? install.remotes : [];
+    const remote = remotes.find((r: any) => typeof r?.url === 'string' || typeof r?.endpoint === 'string') || null;
+    const endpointCandidate = remote?.url || remote?.endpoint || install.url || install.endpoint || install.remoteUrl || '';
+    const transportValue = String(remote?.type || install.transport || 'streamable_http').toLowerCase();
+    setDisplayName(item.name);
+    setEndpoint(endpointCandidate);
+    setTransport(transportValue.includes('sse') ? 'sse' : 'streamable_http');
+    setAuthType('none');
+    setSecret('');
+    setCustomHeaderName('Authorization');
+    setConnectError(!endpointCandidate ? (item.transport.some(t => t.toLowerCase() === 'stdio') ? 'Server ini hanya menyediakan paket lokal/STDIO. Runtime lokal belum tersedia, jadi koneksi remote langsung belum bisa dibuat.' : 'Endpoint remote tidak tersedia di metadata katalog. Masukkan URL MCP endpoint dari penyedia server.') : null);
+    setConnectItem(item);
+  }
+
+  async function submitMarketplaceConnect(e: React.FormEvent) {
+    e.preventDefault();
+    if (!endpoint.trim()) { setConnectError('URL MCP endpoint wajib diisi.'); return; }
+    await handleAddExternal(e);
+    setConnectItem(null);
+    setTab('external');
   }
 
   async function handleAddExternal(e: React.FormEvent) {
@@ -165,6 +191,22 @@ export default function McpHubPage() {
           <div className="glass-card rounded-2xl border-sky-400/30 px-4 py-3 text-xs text-sky-100">{feedback}</div>
         )}
 
+        {connectItem && (
+          <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-4" role="dialog" aria-modal="true" aria-labelledby="mcp-connect-title">
+            <form onSubmit={submitMarketplaceConnect} className="glass-panel w-full max-w-lg space-y-3 rounded-2xl border border-indigo-200/20 p-5 shadow-2xl">
+              <div className="flex items-start justify-between gap-3"><div><h2 id="mcp-connect-title" className="text-base font-semibold text-white">Connect {connectItem.name}</h2><p className="mt-1 text-xs text-slate-400">Tambahkan server ini ke koneksi MCP LEVHUB.</p></div><button type="button" onClick={() => setConnectItem(null)} className="rounded-lg bg-white/10 px-2 py-1 text-xs text-slate-300">Tutup</button></div>
+              {connectError && <div className="rounded-xl border border-amber-300/20 bg-amber-300/10 p-3 text-xs text-amber-100">{connectError}</div>}
+              <label className="block text-xs text-slate-300">Nama koneksi<input required value={displayName} onChange={e => setDisplayName(e.target.value)} className="glass-input mt-1 w-full rounded-xl px-3 py-2 text-sm text-white"/></label>
+              <label className="block text-xs text-slate-300">MCP endpoint URL<input required type="url" value={endpoint} onChange={e => setEndpoint(e.target.value)} placeholder="https://server.example.com/mcp" className="glass-input mt-1 w-full rounded-xl px-3 py-2 text-sm text-white"/></label>
+              <div className="grid grid-cols-2 gap-2"><label className="text-xs text-slate-300">Transport<select value={transport} onChange={e => setTransport(e.target.value as 'streamable_http' | 'sse')} className="glass-input mt-1 w-full rounded-xl px-3 py-2 text-xs text-white"><option value="streamable_http" className="bg-slate-900">Streamable HTTP</option><option value="sse" className="bg-slate-900">SSE (legacy)</option></select></label><label className="text-xs text-slate-300">Autentikasi<select value={authType} onChange={e => setAuthType(e.target.value as 'none' | 'bearer' | 'header')} className="glass-input mt-1 w-full rounded-xl px-3 py-2 text-xs text-white"><option value="none" className="bg-slate-900">Tanpa auth</option><option value="bearer" className="bg-slate-900">Bearer token</option><option value="header" className="bg-slate-900">Custom header</option></select></label></div>
+              {authType === 'header' && <input value={customHeaderName} onChange={e => setCustomHeaderName(e.target.value)} placeholder="X-API-Key" className="glass-input w-full rounded-xl px-3 py-2 text-xs text-white"/>}
+              {authType !== 'none' && <input type="password" value={secret} onChange={e => setSecret(e.target.value)} placeholder="API key / token" className="glass-input w-full rounded-xl px-3 py-2 text-xs text-white"/>}
+              <p className="text-[10px] leading-4 text-slate-500">Token disimpan terenkripsi. Setelah ditambahkan, jalankan Tes koneksi di tab External MCP sebelum mengaktifkannya.</p>
+              <div className="flex justify-end gap-2"><button type="button" onClick={() => setConnectItem(null)} className="rounded-xl bg-white/10 px-4 py-2 text-xs text-slate-200">Batal</button><button type="submit" className="rounded-xl bg-indigo-400 px-4 py-2 text-xs font-semibold text-slate-950">Simpan &amp; Connect</button></div>
+            </form>
+          </div>
+        )}
+
         {tab === 'marketplace' ? (
           <section className="space-y-4">
             <div className="glass-panel rounded-2xl p-4 sm:p-5">
@@ -187,7 +229,7 @@ export default function McpHubPage() {
                   <div className="flex items-start justify-between gap-2"><div className="min-w-0"><h3 className="truncate text-sm font-semibold text-white">{item.name}</h3><p className="mt-1 text-[10px] text-indigo-200">{item.category}</p></div><span className="shrink-0 rounded-full bg-white/[.06] px-2 py-1 text-[9px] text-slate-300">{item.verified ? 'Registry active' : 'Community'}</span></div>
                   <p className="mt-3 line-clamp-3 flex-1 text-xs leading-5 text-slate-400">{item.description}</p>
                   <div className="mt-3 flex flex-wrap gap-1.5"><span className="rounded-md bg-white/[.06] px-2 py-1 text-[9px] text-slate-300">{item.version}</span>{item.popularity?.stars ? <span className="rounded-md bg-white/[.06] px-2 py-1 text-[9px] text-slate-300">★ {item.popularity.stars.toLocaleString()}</span> : null}{item.popularity?.downloads ? <span className="rounded-md bg-white/[.06] px-2 py-1 text-[9px] text-slate-300">{item.popularity.downloads.toLocaleString()} downloads</span> : null}{item.transport.slice(0,2).map(t => <span key={t} className="rounded-md bg-white/[.06] px-2 py-1 text-[9px] text-slate-300">{t}</span>)}</div>
-                  <div className="mt-4 flex flex-wrap gap-2">{item.repositoryUrl && <a href={item.repositoryUrl} target="_blank" rel="noreferrer" className="rounded-lg bg-white/10 px-3 py-2 text-[10px] text-slate-200 hover:bg-white/15">Repository ↗</a>}{item.websiteUrl && <a href={item.websiteUrl} target="_blank" rel="noreferrer" className="rounded-lg bg-white/10 px-3 py-2 text-[10px] text-slate-200 hover:bg-white/15">Docs ↗</a>}</div>
+                  <div className="mt-4 flex flex-wrap gap-2"><button type="button" onClick={() => openMarketplaceConnect(item)} className="inline-flex items-center gap-1 rounded-lg bg-indigo-400 px-3 py-2 text-[10px] font-semibold text-slate-950 hover:bg-indigo-300"><Plug className="h-3 w-3"/> Connect</button>{item.repositoryUrl && <a href={item.repositoryUrl} target="_blank" rel="noreferrer" className="rounded-lg bg-white/10 px-3 py-2 text-[10px] text-slate-200 hover:bg-white/15">Repository ↗</a>}</div>
                 </article>)}
               </div>
             )}
