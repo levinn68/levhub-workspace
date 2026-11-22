@@ -186,6 +186,42 @@ app.post('/api/auth/logout-all', async (req, reply) => {
 app.get('/api/models', async (req, reply) => { await requireSession(req, reply); return await router.listModels(false); });
 app.post('/api/models/refresh', async (req, reply) => { await requireSession(req, reply); const catalog = await router.listModels(true); await repo.recordAuditEvent('model_catalog_refresh', { count: catalog.items.length }); return catalog; });
 
+const CHAT_ATTACHMENT_MIME_TYPES = new Set([
+  'image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/heic', 'image/heif',
+  'video/mp4', 'video/webm', 'video/quicktime',
+  'application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/msword', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.ms-excel', 'text/plain', 'text/markdown', 'text/csv', 'application/json',
+  'application/zip', 'application/octet-stream',
+]);
+
+app.post('/api/chat/attachments/sign', async (req, reply) => {
+  await requireSession(req, reply);
+  const parsed = z.object({
+    name: z.string().min(1).max(180),
+    mimeType: z.string().min(1).max(160),
+    size: z.number().int().positive().max(config.MAX_CHAT_ATTACHMENT_BYTES),
+  }).safeParse(req.body);
+  if (!parsed.success) throw new LevhubError('INVALID_INPUT', 'Metadata file tidak valid atau ukuran file melebihi 100 MB.', 400);
+  const mimeType = parsed.data.mimeType.toLowerCase().split(';')[0].trim();
+  if (!CHAT_ATTACHMENT_MIME_TYPES.has(mimeType)) {
+    throw new LevhubError('UNSUPPORTED_CAPABILITY', 'Format file ini belum didukung. Gunakan foto, video MP4/WebM, PDF, DOCX, XLSX, CSV, JSON, atau TXT.', 415);
+  }
+  const safeName = parsed.data.name.normalize('NFKC').replace(/[^a-zA-Z0-9._-]/g, '_').slice(-100) || 'attachment';
+  const path = `${config.WORKSPACE_ID}/${crypto.randomUUID()}-${safeName}`;
+  const upload = await repo.createChatAttachmentUpload(path);
+  return { ...upload, mimeType, size: parsed.data.size, name: parsed.data.name };
+});
+
+app.post('/api/chat/attachments/access', async (req, reply) => {
+  await requireSession(req, reply);
+  const parsed = z.object({ path: z.string().min(1).max(500) }).safeParse(req.body);
+  if (!parsed.success || !parsed.data.path.startsWith(`${config.WORKSPACE_ID}/`)) {
+    throw new LevhubError('INVALID_INPUT', 'Path lampiran tidak valid.', 400);
+  }
+  return { signedUrl: await repo.createChatAttachmentReadUrl(parsed.data.path) };
+});
+
 app.post('/api/chat', async (req, reply) => {
   await requireSession(req, reply);
   const parsed = z.object({ conversationId: z.string().uuid().optional(), modelId: z.string().min(1), message: z.string().min(1).max(100_000) }).safeParse(req.body);
