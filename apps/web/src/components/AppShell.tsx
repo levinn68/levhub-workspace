@@ -9,6 +9,10 @@ import {
 } from 'lucide-react';
 import { apiFetch } from '@/lib/api';
 
+// Share the first successful session check across route-level AppShell remounts.
+let sessionVerifiedInBrowser = false;
+let sessionCheckPromise: Promise<boolean> | null = null;
+
 interface HealthSummary {
   status: string;
   dependencies?: {
@@ -41,14 +45,30 @@ export function AppShell({ title, topBarExtra, children }: {
 
   useEffect(() => {
     let mounted = true;
-    apiFetch<{ authenticated: boolean }>('/api/auth/me')
-      .then(res => {
+    if (sessionVerifiedInBrowser) {
+      setAuthChecked(true);
+    } else {
+      if (!sessionCheckPromise) {
+        sessionCheckPromise = apiFetch<{ authenticated: boolean }>('/api/auth/me', {
+          signal: AbortSignal.timeout(10000),
+        }).then(res => {
+          sessionVerifiedInBrowser = Boolean(res.authenticated);
+          return sessionVerifiedInBrowser;
+        }).catch(err => {
+          sessionCheckPromise = null;
+          throw err;
+        });
+      }
+      sessionCheckPromise.then(authenticated => {
         if (!mounted) return;
-        if (!res.authenticated) router.replace('/login');
-        else setAuthChecked(true);
-      })
-      .catch(() => { if (mounted) router.replace('/login'); });
-    apiFetch<HealthSummary>('/api/health').then(h => mounted && setHealth(h)).catch(() => {});
+        if (authenticated) setAuthChecked(true);
+        else router.replace('/login');
+      }).catch(() => {
+        if (mounted) router.replace('/login');
+      });
+    }
+    apiFetch<HealthSummary>('/api/health', { signal: AbortSignal.timeout(8000) })
+      .then(h => mounted && setHealth(h)).catch(() => {});
     return () => { mounted = false; };
   }, [router]);
 
@@ -56,7 +76,7 @@ export function AppShell({ title, topBarExtra, children }: {
 
   async function handleLogout() {
     try { await apiFetch('/api/auth/logout', { method: 'POST' }); }
-    finally { router.replace('/login'); }
+    finally { sessionVerifiedInBrowser = false; sessionCheckPromise = null; router.replace('/login'); }
   }
 
   if (!authChecked) return (
