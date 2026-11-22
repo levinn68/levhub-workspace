@@ -268,7 +268,7 @@ app.post('/api/chat', async (req, reply) => {
   });
 
   const abortController = new AbortController();
-  req.raw.on('close', () => abortController.abort());
+  req.raw.on('aborted', () => abortController.abort());
 
   try {
     await chatOrchestrator.handleChatTurn({
