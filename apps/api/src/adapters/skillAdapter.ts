@@ -6,12 +6,10 @@ import {
   parseSkillMarkdown,
   type ValidatedSkillManifest,
 } from '../security/zipValidator.js';
-import type { OverdriveAdapter } from './overdriveAdapter.js';
 
 export class SkillAdapter {
   constructor(
     private readonly config: AppConfig,
-    private readonly overdriveAdapter: OverdriveAdapter,
   ) {}
 
   validateMarkdownPackage(rawMarkdown: string): ValidatedSkillManifest {
@@ -36,10 +34,6 @@ export class SkillAdapter {
       throw new LevhubError('SKILL_EXECUTION_FAILED', `Skill "${skill.slug}" belum diaktifkan.`, 400);
     }
 
-    if (skill.source === 'overdrive' && this.overdriveAdapter.isConfigured()) {
-      const result = await this.overdriveAdapter.executeSkill(skill.slug, input);
-      return { output: result.output, mode: 'runtime' };
-    }
 
     const instructions = typeof skill.manifest?.instructionsMarkdown === 'string'
       ? skill.manifest.instructionsMarkdown
