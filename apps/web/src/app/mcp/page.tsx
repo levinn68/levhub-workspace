@@ -261,8 +261,8 @@ export default function McpHubPage() {
         {connectItem && (
           <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-4" role="dialog" aria-modal="true" aria-labelledby="mcp-connect-title">
             <form onSubmit={submitMarketplaceConnect} className="glass-panel w-full max-w-lg space-y-3 rounded-2xl border border-indigo-200/20 p-5 shadow-2xl">
-              <div className="flex items-start justify-between gap-3"><div><h2 id="mcp-connect-title" className="text-base font-semibold text-white">Connect {connectItem.name}</h2><p className="mt-1 text-xs text-slate-400">Tambahkan server ini ke koneksi MCP LEVHUB.</p></div><button type="button" onClick={() => setConnectItem(null)} className="rounded-lg bg-white/10 px-2 py-1 text-xs text-slate-300">Tutup</button></div>
-              {connectError && <div className="rounded-xl border border-amber-300/20 bg-amber-300/10 p-3 text-xs text-amber-100">{connectError}</div>}
+              <div className="flex items-start justify-between gap-3"><div><h2 id="mcp-connect-title" className="text-base font-semibold text-white">{endpoint ? `Hubungkan ${connectItem.name}` : `Koneksi belum tersedia`}</h2><p className="mt-1 text-xs text-slate-400">{endpoint ? "Endpoint remote ditemukan. Lengkapi autentikasi jika diperlukan." : connectItem.name}</p></div><button type="button" onClick={() => setConnectItem(null)} className="rounded-lg bg-white/10 px-2 py-1 text-xs text-slate-300">Tutup</button></div>
+              {endpoint && connectError && <div className="rounded-xl border border-amber-300/20 bg-amber-300/10 p-3 text-xs text-amber-100">{connectError}</div>}
               {endpoint ? <>
                 <label className="block text-xs text-slate-300">Nama koneksi<input required value={displayName} onChange={e => setDisplayName(e.target.value)} className="glass-input mt-1 w-full rounded-xl px-3 py-2 text-sm text-white"/></label>
                 <label className="block text-xs text-slate-300">MCP endpoint URL<input required type="url" value={endpoint} onChange={e => setEndpoint(e.target.value)} placeholder="https://server.example.com/mcp" className="glass-input mt-1 w-full rounded-xl px-3 py-2 text-sm text-white"/></label>
@@ -271,8 +271,11 @@ export default function McpHubPage() {
                 {authType !== 'none' && <input type="password" value={secret} onChange={e => setSecret(e.target.value)} placeholder="API key / token" className="glass-input w-full rounded-xl px-3 py-2 text-xs text-white"/>}
                 <p className="text-[10px] leading-4 text-slate-500">Token disimpan terenkripsi. Setelah ditambahkan, jalankan Tes koneksi di tab External MCP sebelum mengaktifkannya.</p>
               </> : <div className="space-y-3">
-                <div className="rounded-xl border border-amber-300/20 bg-amber-300/[.08] p-4 text-sm leading-6 text-amber-50">Listing ini belum menyediakan alamat Remote MCP yang bisa dipanggil LEVHUB. Server ini tidak bisa disambungkan hanya dari URL GitHub atau nama paket.</div>
-                <div className="rounded-xl border border-white/[.08] bg-white/[.03] p-3 text-xs leading-5 text-slate-400"><strong className="text-slate-200">Yang dibutuhkan:</strong> penyedia server harus menjalankan MCP sebagai layanan remote dan menerbitkan endpoint Streamable HTTP. Jika listing hanya menyediakan STDIO, diperlukan local runtime yang dapat menjalankan proses server.</div>
+                <div className="rounded-2xl border border-amber-300/20 bg-amber-300/[.07] p-4">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-amber-100"><span className="h-2 w-2 rounded-full bg-amber-300"/> Belum tersedia untuk koneksi langsung</div>
+                  <p className="mt-2 text-xs leading-5 text-slate-300">Katalog hanya memberikan informasi repositori atau paket. Belum ada endpoint Remote MCP yang bisa dihubungkan ke LEVHUB.</p>
+                  <p className="mt-2 text-[11px] leading-5 text-slate-500">Dukungan server lokal (STDIO) memerlukan Local MCP Runtime.</p>
+                </div>
                 {connectItem.repositoryUrl && <a href={connectItem.repositoryUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-xl bg-white/10 px-4 py-2.5 text-xs text-slate-200 hover:bg-white/15">Buka repository <ArrowUpRight className="h-3.5 w-3.5"/></a>}
               </div>}
               <div className="flex justify-end gap-2"><button type="button" onClick={() => setConnectItem(null)} className="rounded-xl bg-white/10 px-4 py-2 text-xs text-slate-200">{endpoint ? 'Batal' : 'Tutup'}</button>{endpoint && <button type="submit" className="rounded-xl bg-indigo-400 px-4 py-2 text-xs font-semibold text-slate-950">Simpan &amp; Connect</button>}</div>
