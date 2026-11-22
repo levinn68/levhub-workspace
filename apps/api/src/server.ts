@@ -254,48 +254,88 @@ function normalizeRegistryEntry(raw: any): MarketplaceEntry | null {
   return { id: 'official:' + s.name, name: String(s.title || s.name), description: String(s.description || 'Official MCP Registry listing.'), version: String(s.version || 'unknown'), source: 'Official MCP Registry', category: inferMcpCategory([s.name, s.description, s.title].filter(Boolean).join(' ')), repositoryUrl: typeof s.repository?.url === 'string' ? s.repository.url : null, websiteUrl: typeof s.websiteUrl === 'string' ? s.websiteUrl : null, transport: transports, auth, install: { packages, remotes }, verified: meta?.status === 'active' && meta?.isLatest === true };
 }
 
+
 app.get('/api/mcp/marketplace', async (req, reply) => {
   await requireSession(req, reply);
-  const q = req.query as { q?: string; category?: string; provider?: string; limit?: string };
+  const q = req.query as { q?: string; category?: string; provider?: string; limit?: string; cursor?: string; sort?: string };
   const query = String(q.q || '').trim().slice(0, 100);
   const category = String(q.category || 'All');
   const provider = String(q.provider || 'all').toLowerCase();
-  const limit = Math.min(Math.max(Number(q.limit) || 60, 1), 100);
-  const tasks: Array<Promise<MarketplaceEntry[]>> = [];
+  const sort = ['quality', 'stars', 'downloads', 'new'].includes(String(q.sort)) ? String(q.sort) : 'quality';
+  const limit = Math.min(Math.max(Number(q.limit) || 50, 1), 50);
+  const tasks: Array<Promise<{ items: MarketplaceEntry[]; total: number; nextCursor: string | null }>> = [];
+
+  if (provider === 'all' || provider === 'hosted') tasks.push((async () => {
+    const url = new URL('https://api.hostedmcp.org/v1/servers');
+    url.searchParams.set('limit', String(limit));
+    url.searchParams.set('sort', sort);
+    if (query) url.searchParams.set('q', query);
+    if (category !== 'All') url.searchParams.set('category', category);
+    if (q.cursor) url.searchParams.set('cursor', q.cursor);
+    const res = await fetch(url, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(15000) });
+    if (!res.ok) throw new Error('HostedMCP catalog unavailable');
+    const data: any = await res.json();
+    const rows = Array.isArray(data.items) ? data.items : [];
+    const items = rows.map((s: any) => ({
+      id: 'hosted:' + String(s.slug || s.id || s.name),
+      name: String(s.name || s.title || s.slug || 'Unknown MCP'),
+      description: String(s.description || ''),
+      version: String(s.version || s.latestVersion || '—'),
+      source: 'Catalog',
+      category: String(s.category || inferMcpCategory([s.name, s.description, s.tags].flat().join(' '))),
+      repositoryUrl: s.repository || s.repositoryUrl || s.repo || null,
+      websiteUrl: s.url || s.website || null,
+      transport: Array.isArray(s.transports) ? s.transports : (s.transport ? [String(s.transport)] : []),
+      auth: Array.isArray(s.auth) ? s.auth : (s.authType ? [String(s.authType)] : []),
+      install: s,
+      verified: Boolean(s.verified || s.checks?.passed),
+      popularity: { stars: Number(s.stars || s.githubStars || 0), downloads: Number(s.weeklyDownloads || s.downloads || 0) },
+    } as MarketplaceEntry & { popularity: { stars: number; downloads: number } }));
+    return { items, total: Number(data.total || items.length), nextCursor: data.nextCursor || null };
+  })());
+
   if (provider === 'all' || provider === 'official') tasks.push((async () => {
     const url = new URL('https://registry.modelcontextprotocol.io/v0.1/servers');
     url.searchParams.set('limit', '100'); url.searchParams.set('version', 'latest');
     if (query.length >= 3) url.searchParams.set('search', query);
     const res = await fetch(url, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(12000) });
-    if (!res.ok) throw new Error('Official MCP Registry unavailable');
+    if (!res.ok) throw new Error('Official Registry unavailable');
     const data: any = await res.json();
-    return (Array.isArray(data.servers) ? data.servers : []).map(normalizeRegistryEntry).filter(Boolean) as MarketplaceEntry[];
+    const items = (Array.isArray(data.servers) ? data.servers : []).map(normalizeRegistryEntry).filter(Boolean) as MarketplaceEntry[];
+    return { items, total: items.length, nextCursor: null };
   })());
-  if (provider === 'all' || provider === 'community') tasks.push((async () => {
-    const res = await fetch('https://mcp.tc/api/index.json', { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(10000) });
-    if (!res.ok) throw new Error('Community directory unavailable');
-    const data: any = await res.json();
-    const rows = Array.isArray(data) ? data : (data.items || data.servers || data.results || []);
-    return rows.map((raw: any) => {
-      const s = raw.server || raw; const name = s?.name || s?.title || s?.slug;
-      if (typeof name !== 'string') return null;
-      return { id: 'community:' + (s.slug || name), name: String(s.title || name), description: String(s.description || 'Community MCP directory listing.'), version: String(s.version || 'Community'), source: 'mcp.tc Community Directory', category: inferMcpCategory([name, s.description, s.category].filter(Boolean).join(' ')), repositoryUrl: s.repository?.url || s.repositoryUrl || null, websiteUrl: s.url || s.website || null, transport: Array.isArray(s.transports) ? s.transports : [], auth: Array.isArray(s.auth) ? s.auth : [], install: s, verified: false } as MarketplaceEntry;
-    }).filter(Boolean) as MarketplaceEntry[];
-  })());
+
   if (provider === 'all' || provider === 'github') tasks.push((async () => {
     const url = new URL('https://api.github.com/search/repositories');
-    url.searchParams.set('q', (query || 'mcp server') + ' in:name,description,readme'); url.searchParams.set('sort', 'updated'); url.searchParams.set('per_page', '30');
+    url.searchParams.set('q', (query || 'mcp server') + ' in:name,description,readme'); url.searchParams.set('sort', 'stars'); url.searchParams.set('per_page', '30');
     const res = await fetch(url, { headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'LEVHUB-MCP-Marketplace' }, signal: AbortSignal.timeout(12000) });
     if (!res.ok) throw new Error('GitHub discovery unavailable');
     const data: any = await res.json();
-    return (data.items || []).map((s: any) => ({ id: 'github:' + s.full_name, name: s.full_name, description: String(s.description || 'Community MCP server repository.'), version: s.pushed_at ? 'Updated ' + String(s.pushed_at).slice(0, 10) : 'Repository', source: 'GitHub Community', category: inferMcpCategory(s.full_name + ' ' + (s.description || '')), repositoryUrl: s.html_url || null, websiteUrl: s.homepage || null, transport: [], auth: [], install: { fullName: s.full_name, defaultBranch: s.default_branch }, verified: false } as MarketplaceEntry));
+    const items = (data.items || []).map((s: any) => ({
+      id: 'github:' + s.full_name, name: s.full_name, description: String(s.description || 'Community MCP server repository.'),
+      version: '★ ' + Number(s.stargazers_count || 0).toLocaleString('en-US'), source: 'Catalog',
+      category: inferMcpCategory(s.full_name + ' ' + (s.description || '')), repositoryUrl: s.html_url || null,
+      websiteUrl: s.homepage || null, transport: [], auth: [], install: { fullName: s.full_name, defaultBranch: s.default_branch },
+      verified: false, popularity: { stars: Number(s.stargazers_count || 0), downloads: 0 },
+    } as MarketplaceEntry & { popularity: { stars: number; downloads: number } }));
+    return { items, total: Number(data.total_count || items.length), nextCursor: null };
   })());
+
   const settled = await Promise.allSettled(tasks);
-  const entries = settled.flatMap(x => x.status === 'fulfilled' ? x.value : []);
-  const failures = settled.filter(x => x.status === 'rejected').length;
+  const successful = settled.filter((x): x is PromiseFulfilledResult<{ items: MarketplaceEntry[]; total: number; nextCursor: string | null }> => x.status === 'fulfilled').map(x => x.value);
+  const failed = settled.length - successful.length;
+  const entries = successful.flatMap(x => x.items);
   const unique = Array.from(new Map(entries.map(item => [item.id, item])).values());
-  const filtered = unique.filter(item => (category === 'All' || item.category === category) && (!query || (item.name + ' ' + item.description + ' ' + item.category + ' ' + item.source).toLowerCase().includes(query.toLowerCase())));
-  return { items: filtered.slice(0, limit), total: filtered.length, providers: [{ id: 'official', name: 'Official MCP Registry' }, { id: 'community', name: 'mcp.tc Community Directory' }, { id: 'github', name: 'GitHub Community' }], categories: ['All', ...Array.from(new Set(unique.map(item => item.category))).sort()], providerStatus: { loaded: tasks.length - failures, requested: tasks.length, partial: failures > 0 }, note: 'Katalog discovery berisi metadata; verifikasi endpoint, transport, dan autentikasi sebelum menyimpan koneksi.' };
+  const filtered = unique.filter(item => category === 'All' || item.category.toLowerCase() === category.toLowerCase());
+  if (sort === 'stars') filtered.sort((a: any, b: any) => Number(b.popularity?.stars || 0) - Number(a.popularity?.stars || 0));
+  else if (sort === 'downloads') filtered.sort((a: any, b: any) => Number(b.popularity?.downloads || 0) - Number(a.popularity?.downloads || 0));
+  return {
+    items: filtered.slice(0, limit), total: Math.max(filtered.length, successful.reduce((n, x) => n + x.total, 0)),
+    nextCursor: successful.find(x => x.nextCursor)?.nextCursor || null,
+    categories: ['All', ...Array.from(new Set(unique.map(item => item.category))).sort()],
+    providerStatus: { loaded: successful.length, requested: tasks.length, partial: failed > 0 },
+    sort, note: 'Popularity is ranked using public adoption signals, not private usage telemetry.',
+  };
 });
 
 app.post('/api/mcp/external', async (req, reply) => {
