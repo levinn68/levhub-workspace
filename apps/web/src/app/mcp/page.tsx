@@ -134,7 +134,9 @@ export default function McpHubPage() {
     const install = (item.install || {}) as any;
     const remotes = Array.isArray(install.remotes) ? install.remotes : [];
     const remote = remotes.find((r: any) => typeof r?.url === 'string' || typeof r?.endpoint === 'string') || null;
-    const endpointCandidate = remote?.url || remote?.endpoint || install.url || install.endpoint || install.remoteUrl || '';
+    // Only accept an explicitly declared remote MCP endpoint; catalog and docs URLs are not endpoints.
+    const declaredEndpoint = remote?.url || remote?.endpoint || install.remoteUrl || '';
+    const endpointCandidate = typeof declaredEndpoint === 'string' && !/hostedmcp\\.org\\/servers\\//i.test(declaredEndpoint) ? declaredEndpoint : '';
     const transportValue = String(remote?.type || install.transport || 'streamable_http').toLowerCase();
     setDisplayName(item.name);
     setEndpoint(endpointCandidate);
@@ -282,123 +284,36 @@ export default function McpHubPage() {
             <div className="flex flex-wrap items-center justify-between gap-3"><p className="max-w-2xl text-[11px] leading-5 text-slate-500">Urutan populer memakai sinyal publik seperti stars dan download, bukan data pemakaian privat. Server lokal/stdio tetap memerlukan runtime host.</p>{marketCursor ? <button type="button" onClick={async () => { setMarketLoading(true); try { const params = new URLSearchParams({ q: marketQuery, category: marketCategory, provider: "hosted", sort: marketSort, limit: "50", cursor: marketCursor }); const data = await apiFetch<{items: MarketplaceItem[]; nextCursor?: string | null}>("/api/mcp/marketplace?" + params.toString()); setMarketItems(prev => [...prev, ...(data.items || [])]); setMarketCursor(data.nextCursor || null); } catch (err) { setFeedback(err instanceof Error ? err.message : "Gagal memuat halaman berikutnya."); } finally { setMarketLoading(false); } }} className="rounded-xl bg-white/10 px-4 py-2 text-xs text-white hover:bg-white/15">Muat lebih banyak</button> : null}</div>
           </section>
         ) : tab === 'external' ? (
-          <div className="grid gap-5 lg:grid-cols-3">
-            <form onSubmit={handleAddExternal} className="glass-panel space-y-3 rounded-2xl p-5">
-              <h2 className="flex items-center gap-2 text-sm font-semibold text-white">
-                <Plus className="h-4 w-4 text-sky-400" /> Tambah External MCP
-              </h2>
-              <input
-                required
-                value={displayName}
-                onChange={(e) => setDisplayName(e.target.value)}
-                placeholder="Nama tampilan (mis. GitHub MCP)"
-                className="glass-input w-full rounded-xl px-3 py-2 text-xs text-white"
-              />
-              <input
-                required
-                type="url"
-                value={endpoint}
-                onChange={(e) => setEndpoint(e.target.value)}
-                placeholder="https://mcp.example.com/rpc"
-                className="glass-input w-full rounded-xl px-3 py-2 text-xs text-white"
-              />
-              <div className="grid grid-cols-2 gap-2">
-                <select
-                  value={transport}
-                  onChange={(e) => setTransport(e.target.value as 'streamable_http' | 'sse')}
-                  className="glass-input rounded-xl px-3 py-2 text-xs text-white"
-                >
-                  <option value="streamable_http" className="bg-slate-900">Streamable HTTP</option>
-                  <option value="sse" className="bg-slate-900">SSE</option>
-                </select>
-                <select
-                  value={authType}
-                  onChange={(e) => setAuthType(e.target.value as 'none' | 'bearer' | 'header')}
-                  className="glass-input rounded-xl px-3 py-2 text-xs text-white"
-                >
-                  <option value="none" className="bg-slate-900">Tanpa Auth</option>
-                  <option value="bearer" className="bg-slate-900">Bearer Token</option>
-                  <option value="header" className="bg-slate-900">Custom Header</option>
-                </select>
+          <section className="space-y-4">
+            <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-slate-900 via-slate-900 to-indigo-950/70 p-5 sm:p-6">
+              <div className="pointer-events-none absolute -right-12 -top-16 h-48 w-48 rounded-full bg-sky-400/10 blur-3xl" />
+              <div className="relative flex flex-wrap items-start justify-between gap-4">
+                <div className="max-w-xl"><p className="text-[10px] font-semibold uppercase tracking-[.22em] text-sky-300">Koneksi workspace</p><h2 className="mt-2 text-xl font-semibold tracking-tight text-white">External MCP</h2><p className="mt-1 text-xs leading-5 text-slate-400">Kelola server MCP yang terhubung ke LEVHUB. Uji koneksi sebelum mengaktifkan tools untuk AI.</p></div>
+                <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-right"><p className="text-2xl font-semibold tabular-nums text-white">{externalServers.length}</p><p className="text-[10px] text-slate-400">koneksi tersimpan</p></div>
               </div>
-              {authType === 'header' && <input required value={customHeaderName} onChange={e => setCustomHeaderName(e.target.value)} placeholder="Nama header (mis. Authorization, X-API-Key)" className="glass-input w-full rounded-xl px-3 py-2 text-xs text-white" />}
-              {authType !== 'none' && (
-                <input
-                  type="password"
-                  value={secret}
-                  onChange={(e) => setSecret(e.target.value)}
-                  placeholder="Secret token (write-only, terenkripsi)"
-                  className="glass-input w-full rounded-xl px-3 py-2 text-xs text-white"
-                />
-              )}
-              <button
-                type="submit"
-                className="w-full rounded-xl bg-sky-400 py-2 text-xs font-semibold text-slate-950 hover:brightness-110"
-              >
-                Simpan Koneksi MCP
-              </button>
-            </form>
-
-            <div className="space-y-3 lg:col-span-2">
-              {externalServers.length === 0 ? (
-                <div className="glass-panel rounded-2xl p-8 text-center text-xs text-slate-400">
-                  Belum ada server MCP eksternal yang terdaftar.
-                </div>
-              ) : (
-                externalServers.map((srv) => (
-                  <div key={srv.id} className="glass-card flex flex-wrap items-center justify-between gap-3 rounded-2xl p-4">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <Plug className="h-4 w-4 text-sky-400" />
-                        <p className="font-semibold text-sm text-white">{srv.displayName}</p>
-                        <span className="rounded-md bg-white/10 px-2 py-0.5 text-[10px] text-slate-300">
-                          {srv.config.transport}
-                        </span>
-                      </div>
-                      <p className="mt-1 truncate font-mono text-[11px] text-slate-400">{srv.config.endpoint}</p>
-                      <p className="mt-1 text-[11px] text-slate-400">
-                        Status: <span className="text-slate-200">{srv.status}</span> · Secret:{' '}
-                        {srv.hasSecret ? 'Tersimpan (masked)' : 'Tidak ada'}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => handleTest(srv.id)}
-                        className="inline-flex items-center gap-1 rounded-lg bg-white/10 px-2.5 py-1.5 text-xs hover:bg-white/15"
-                      >
-                        <CheckCircle2 className="h-3.5 w-3.5" /> Tes
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleToggle(srv)}
-                        className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium ${
-                          srv.enabled ? 'bg-emerald-500/20 text-emerald-200' : 'bg-white/10 text-slate-300'
-                        }`}
-                      >
-                        <Power className="h-3.5 w-3.5" /> {srv.enabled ? 'Aktif' : 'Nonaktif'}
-                      </button>
-                      <button
-                        type="button"
-                        aria-label="Hapus MCP"
-                        onClick={() => handleDelete(srv.id)}
-                        className="rounded-lg bg-rose-500/15 p-1.5 text-rose-300 hover:bg-rose-500/25"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                ))
-              )}
+              <details className="group relative mt-5 rounded-2xl border border-white/10 bg-black/20">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3.5"><span className="flex items-center gap-2 text-sm font-medium text-white"><Plus className="h-4 w-4 text-sky-300"/> Tambah server manual</span><span className="text-xs text-slate-400 transition group-open:rotate-180">⌄</span></summary>
+                <form onSubmit={handleAddExternal} className="grid gap-3 border-t border-white/10 p-4 sm:grid-cols-2">
+                  <label className="block text-[11px] text-slate-400">Nama server<input required value={displayName} onChange={e => setDisplayName(e.target.value)} placeholder="Contoh: GitHub" className="glass-input mt-1.5 w-full rounded-xl px-3 py-2.5 text-sm text-white"/></label>
+                  <label className="block text-[11px] text-slate-400">Endpoint MCP<input required type="url" value={endpoint} onChange={e => setEndpoint(e.target.value)} placeholder="https://host.example.com/mcp" className="glass-input mt-1.5 w-full rounded-xl px-3 py-2.5 text-sm text-white"/></label>
+                  <label className="block text-[11px] text-slate-400">Transport<select value={transport} onChange={e => setTransport(e.target.value as 'streamable_http' | 'sse')} className="glass-input mt-1.5 w-full rounded-xl px-3 py-2.5 text-sm text-white"><option value="streamable_http" className="bg-slate-900">Streamable HTTP</option><option value="sse" className="bg-slate-900">SSE (legacy)</option></select></label>
+                  <label className="block text-[11px] text-slate-400">Autentikasi<select value={authType} onChange={e => setAuthType(e.target.value as 'none' | 'bearer' | 'header')} className="glass-input mt-1.5 w-full rounded-xl px-3 py-2.5 text-sm text-white"><option value="none" className="bg-slate-900">Tanpa autentikasi</option><option value="bearer" className="bg-slate-900">Bearer token</option><option value="header" className="bg-slate-900">Custom header</option></select></label>
+                  {authType === 'header' && <label className="block text-[11px] text-slate-400">Nama header<input required value={customHeaderName} onChange={e => setCustomHeaderName(e.target.value)} placeholder="X-API-Key" className="glass-input mt-1.5 w-full rounded-xl px-3 py-2.5 text-sm text-white"/></label>}
+                  {authType !== 'none' && <label className="block text-[11px] text-slate-400">Token / API key<input type="password" value={secret} onChange={e => setSecret(e.target.value)} placeholder="Disimpan terenkripsi" className="glass-input mt-1.5 w-full rounded-xl px-3 py-2.5 text-sm text-white"/></label>}
+                  <div className="flex items-center justify-between gap-3 sm:col-span-2"><p className="max-w-sm text-[10px] leading-4 text-slate-500">Gunakan URL endpoint MCP resmi, bukan URL halaman katalog atau dokumentasi.</p><button type="submit" className="shrink-0 rounded-xl bg-sky-400 px-4 py-2.5 text-xs font-semibold text-slate-950 shadow-lg shadow-sky-950/30 hover:bg-sky-300">Simpan koneksi</button></div>
+                </form>
+              </details>
             </div>
-          </div>
+            <div className="flex items-center justify-between gap-3 px-1"><div><h3 className="text-sm font-semibold text-white">Server terhubung</h3><p className="mt-1 text-[11px] text-slate-500">Tes, aktifkan, atau putuskan koneksi.</p></div><button type="button" onClick={loadMcp} className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/[.04] px-3 py-2 text-[11px] text-slate-300 hover:bg-white/[.08]"><RefreshCw className={`h-3 w-3 ${loading ? 'animate-spin' : ''}`}/> Segarkan</button></div>
+            {externalServers.length === 0 ? <div className="rounded-2xl border border-dashed border-white/15 bg-white/[.02] px-5 py-10 text-center"><div className="mx-auto flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/[.05]"><Plug className="h-5 w-5 text-slate-400"/></div><p className="mt-3 text-sm font-medium text-white">Belum ada server MCP</p><p className="mx-auto mt-1 max-w-xs text-xs leading-5 text-slate-500">Hubungkan server dari Marketplace atau tambahkan endpoint MCP secara manual.</p></div> : (
+              <div className="grid gap-3 xl:grid-cols-2">{externalServers.map(srv => { const isError = srv.status.toLowerCase().includes('error') || srv.status.toLowerCase().includes('fail'); return <article key={srv.id} className="rounded-2xl border border-white/10 bg-gradient-to-br from-slate-900/95 to-slate-950/95 p-4 shadow-xl shadow-black/10">
+                <div className="flex items-start justify-between gap-3"><div className="flex min-w-0 items-center gap-3"><div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border ${isError ? 'border-rose-400/20 bg-rose-400/10 text-rose-300' : srv.enabled ? 'border-emerald-400/20 bg-emerald-400/10 text-emerald-300' : 'border-sky-400/20 bg-sky-400/10 text-sky-300'}`}><Plug className="h-4 w-4"/></div><div className="min-w-0"><h4 className="truncate text-sm font-semibold text-white">{srv.displayName}</h4><p className="mt-1 truncate text-[10px] text-slate-500">{srv.config.transport || 'Streamable HTTP'}</p></div></div><span className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-medium ${isError ? 'border-rose-400/20 bg-rose-400/10 text-rose-300' : srv.enabled ? 'border-emerald-400/20 bg-emerald-400/10 text-emerald-300' : 'border-white/10 bg-white/[.04] text-slate-400'}`}>{isError ? 'Perlu diperiksa' : srv.enabled ? 'Aktif' : 'Nonaktif'}</span></div>
+                <p className="mt-3 truncate rounded-lg bg-black/20 px-3 py-2 font-mono text-[10px] text-slate-400">{srv.config.endpoint}</p>
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-3"><p className="text-[10px] text-slate-500">Autentikasi: {srv.hasSecret ? 'Kredensial tersimpan' : 'Tidak ada kredensial'}</p><div className="flex items-center gap-2"><button type="button" onClick={() => handleTest(srv.id)} className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/[.05] px-3 py-2 text-[10px] font-medium text-slate-200 hover:bg-white/10"><CheckCircle2 className="h-3.5 w-3.5"/> Uji koneksi</button><button type="button" onClick={() => handleToggle(srv)} className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[10px] font-semibold ${srv.enabled ? 'bg-emerald-400/15 text-emerald-200' : 'bg-sky-400 text-slate-950'}`}><Power className="h-3.5 w-3.5"/>{srv.enabled ? 'Nonaktifkan' : 'Aktifkan'}</button><button type="button" aria-label={`Hapus ${srv.displayName}`} onClick={() => handleDelete(srv.id)} className="rounded-lg border border-rose-400/15 bg-rose-400/10 p-2 text-rose-300 hover:bg-rose-400/20"><Trash2 className="h-3.5 w-3.5"/></button></div></div>
+              </article>; })}</div>
+            )}
+          </section>
         ) : (
-          <div className="space-y-3">
-            {runtimeServers.length === 0 ? (
-              <div className="glass-panel rounded-2xl p-8 text-center text-xs text-slate-400">
-                Belum ada server MCP aktif yang terdeteksi dari runtime upstream (periksa konfigurasi OVERDRIVE_BASE_URL).
-              </div>
-            ) : (
               runtimeServers.map((srv) => (
                 <div key={srv.id} className="glass-card rounded-2xl p-4">
                   <div className="flex items-center justify-between">
