@@ -9,6 +9,7 @@ import type {
 } from '../types.js';
 import { LevhubError } from '../security/errors.js';
 import { redactObject } from '../security/redaction.js';
+import { hashCsrfToken } from '../security/crypto.js';
 
 export class LevhubRepository {
   private client: SupabaseClient | null = null;
@@ -37,6 +38,45 @@ export class LevhubRepository {
       );
     }
     return this.client;
+  }
+
+  async createSession(tokenHash: string, csrfToken: string, expiresAt: string): Promise<void> {
+    const { error } = await this.db().from('levhub_sessions').insert({
+      token_hash: tokenHash,
+      csrf_token_hash: hashCsrfToken(csrfToken),
+      expires_at: expiresAt,
+    });
+    if (error) throw new LevhubError('INTERNAL_ERROR', 'Gagal menyimpan sesi.', 500, true);
+  }
+
+  async getActiveSession(tokenHash: string): Promise<{ expires_at: string; csrf_token_hash: string } | null> {
+    const { data, error } = await this.db()
+      .from('levhub_sessions')
+      .select('expires_at,csrf_token_hash')
+      .eq('token_hash', tokenHash)
+      .is('revoked_at', null)
+      .gt('expires_at', new Date().toISOString())
+      .maybeSingle();
+    if (error) throw new LevhubError('UPSTREAM_UNAVAILABLE', 'Gagal memvalidasi sesi.', 503, true);
+    if (data) {
+      await this.db().from('levhub_sessions').update({ last_seen_at: new Date().toISOString() }).eq('token_hash', tokenHash);
+    }
+    return data;
+  }
+
+  async revokeSession(tokenHash: string): Promise<void> {
+    const { error } = await this.db().from('levhub_sessions')
+      .update({ revoked_at: new Date().toISOString() })
+      .eq('token_hash', tokenHash)
+      .is('revoked_at', null);
+    if (error) throw new LevhubError('INTERNAL_ERROR', 'Gagal mengakhiri sesi.', 500);
+  }
+
+  async revokeAllSessions(): Promise<void> {
+    const { error } = await this.db().from('levhub_sessions')
+      .update({ revoked_at: new Date().toISOString() })
+      .is('revoked_at', null);
+    if (error) throw new LevhubError('INTERNAL_ERROR', 'Gagal mengakhiri semua sesi.', 500);
   }
 
   async healthCheck(): Promise<{ ok: boolean; latencyMs: number; message: string }> {
