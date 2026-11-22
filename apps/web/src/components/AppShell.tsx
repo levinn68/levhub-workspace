@@ -53,6 +53,9 @@ export function AppShell({ title, topBarExtra, children }: {
           signal: AbortSignal.timeout(10000),
         }).then(res => {
           sessionVerifiedInBrowser = Boolean(res.authenticated);
+          // Do not keep a resolved "unauthenticated" promise: login may succeed
+          // after this check, and the next route must perform a fresh check.
+          if (!sessionVerifiedInBrowser) sessionCheckPromise = null;
           return sessionVerifiedInBrowser;
         }).catch(err => {
           sessionCheckPromise = null;
