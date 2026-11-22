@@ -28,6 +28,49 @@ interface RuntimeMcpItem {
   tools: Array<{ name: string; description: string }>;
 }
 
+
+function getIndonesianMcpDescription(item: MarketplaceItem): string {
+  const key = `${item.name} ${item.description}`.toLowerCase();
+  const curated: Array<[RegExp, string]> = [
+    [/github/, 'Menghubungkan LEVHUB ke GitHub untuk mencari repositori, membaca dan mengelola file, memantau issue, serta membantu alur kerja pengembangan kode.'],
+    [/gitlab/, 'Menghubungkan GitLab untuk mengakses proyek, repositori, issue, merge request, dan aktivitas pengembangan dalam satu alur kerja.'],
+    [/filesystem|file.?system/, 'Memberi akses terkontrol ke file dan folder agar AI dapat membaca, mencari, membuat, serta mengelola berkas sesuai izin.'],
+    [/postgres|postgresql/, 'Menghubungkan database PostgreSQL untuk membaca skema, menjalankan kueri, dan membantu analisis data.'],
+    [/supabase/, 'Menghubungkan Supabase untuk mengelola database, tabel, autentikasi, dan layanan proyek Supabase.'],
+    [/mysql/, 'Menghubungkan database MySQL untuk membaca struktur tabel, menjalankan kueri, dan mengambil data.'],
+    [/sqlite/, 'Mengakses database SQLite untuk membaca struktur basis data dan menjalankan kueri lokal.'],
+    [/brave.?search|web.?search/, 'Mencari informasi di web dan mengembalikan hasil pencarian yang relevan agar AI dapat melakukan riset dengan sumber terbaru.'],
+    [/fetch|web.?content/, 'Mengambil isi halaman web dari URL tertentu sehingga AI dapat membaca dan merangkum konten situs.'],
+    [/playwright|browser|puppeteer/, 'Mengendalikan browser untuk membuka halaman, menavigasi situs, mengisi formulir, dan mengambil informasi dari web.'],
+    [/slack/, 'Menghubungkan Slack untuk mencari pesan, membaca percakapan, dan membantu mengelola komunikasi tim.'],
+    [/discord/, 'Menghubungkan Discord untuk membaca informasi server, kanal, dan pesan serta membantu aktivitas komunitas.'],
+    [/notion/, 'Menghubungkan Notion untuk mencari, membaca, dan mengelola halaman serta basis data workspace.'],
+    [/linear/, 'Menghubungkan Linear untuk mencari dan mengelola issue, proyek, siklus kerja, serta pembaruan tugas tim.'],
+    [/figma/, 'Menghubungkan Figma untuk menemukan file desain, membaca konteks desain, dan membantu alur kerja kolaborasi desain.'],
+    [/sentry/, 'Mengakses data error dan performa dari Sentry untuk membantu menemukan bug serta menganalisis masalah aplikasi.'],
+    [/cloudflare/, 'Mengelola layanan Cloudflare seperti DNS, Workers, jaringan, dan konfigurasi keamanan melalui integrasi MCP.'],
+    [/vercel/, 'Mengakses proyek dan deployment Vercel untuk memeriksa status build, konfigurasi, serta proses rilis aplikasi.'],
+    [/google.?drive|gdrive/, 'Menghubungkan Google Drive untuk mencari, membaca, dan mengelola dokumen serta file yang tersedia.'],
+    [/memory/, 'Menyediakan penyimpanan memori agar AI dapat menyimpan dan mengambil informasi penting antarinteraksi.'],
+    [/docker/, 'Membantu mengelola container dan resource Docker untuk kebutuhan pengembangan serta operasional aplikasi.'],
+    [/kubernetes| kubectl/, 'Membantu memeriksa dan mengelola resource Kubernetes seperti pod, deployment, dan namespace.'],
+    [/exa/, 'Melakukan pencarian web dan riset semantik untuk menemukan halaman serta sumber informasi yang relevan.'],
+    [/apify/, 'Menghubungkan platform Apify untuk menjalankan aktor otomasi dan mengambil data dari situs atau layanan web.'],
+  ];
+  const match = curated.find(([pattern]) => pattern.test(key));
+  if (match) return match[1];
+
+  const category = item.category.toLowerCase();
+  if (/database/.test(category)) return `Menghubungkan AI ke layanan database untuk membaca struktur data, menjalankan kueri, dan mengambil informasi yang dibutuhkan. Integrasi: ${item.name}.`;
+  if (/browser|search/.test(category)) return `Membantu AI mencari, membuka, dan mengambil informasi dari web melalui layanan ${item.name}.`;
+  if (/cloud|devops/.test(category)) return `Menghubungkan AI ke layanan cloud dan DevOps untuk membantu memeriksa serta mengelola resource dan alur deployment melalui ${item.name}.`;
+  if (/productivity|communication/.test(category)) return `Menghubungkan AI ke aplikasi kerja dan komunikasi agar informasi serta aktivitas workspace dapat diakses melalui ${item.name}.`;
+  if (/files|storage/.test(category)) return `Memungkinkan AI mencari, membaca, dan mengelola file pada layanan penyimpanan ${item.name}, sesuai kemampuan dan izin server.`;
+  if (/design|media/.test(category)) return `Menghubungkan AI ke alat desain atau media ${item.name} untuk membantu mengakses aset dan mendukung alur kerja kreatif.`;
+  if (/developer/.test(category)) return `Menyediakan integrasi alat pengembangan ${item.name} agar AI dapat membantu pekerjaan teknis dan pengelolaan proyek.`;
+  return `Server MCP ${item.name} menyediakan integrasi ${item.category.toLowerCase()} agar AI dapat mengakses fungsi layanan terkait dari LEVHUB. Fitur yang tersedia mengikuti kemampuan server tersebut.`;
+}
+
 export default function McpHubPage() {
   const [tab, setTab] = useState<'runtime' | 'external' | 'marketplace'>('marketplace');
   const [runtimeServers, setRuntimeServers] = useState<RuntimeMcpItem[]>([]);
@@ -230,7 +273,7 @@ export default function McpHubPage() {
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                 {marketItems.map(item => <article key={item.id} className="glass-card flex min-w-0 flex-col rounded-2xl p-4 transition hover:border-indigo-200/30">
                   <div className="flex items-start justify-between gap-2"><div className="min-w-0"><h3 className="truncate text-sm font-semibold text-white">{item.name}</h3><p className="mt-1 text-[10px] text-indigo-200">{item.category}</p></div><span className="shrink-0 rounded-full bg-white/[.06] px-2 py-1 text-[9px] text-slate-300">{item.verified ? 'Registry active' : 'Community'}</span></div>
-                  <p className="mt-3 line-clamp-3 flex-1 text-xs leading-5 text-slate-400">{item.description}</p>
+                  <p className="mt-3 line-clamp-3 flex-1 text-xs leading-5 text-slate-400">{getIndonesianMcpDescription(item)}</p>
                   <div className="mt-3 flex flex-wrap gap-1.5"><span className="rounded-md bg-white/[.06] px-2 py-1 text-[9px] text-slate-300">{item.version}</span>{item.popularity?.stars ? <span className="rounded-md bg-white/[.06] px-2 py-1 text-[9px] text-slate-300">★ {item.popularity.stars.toLocaleString()}</span> : null}{item.popularity?.downloads ? <span className="rounded-md bg-white/[.06] px-2 py-1 text-[9px] text-slate-300">{item.popularity.downloads.toLocaleString()} downloads</span> : null}{item.transport.slice(0,2).map(t => <span key={t} className="rounded-md bg-white/[.06] px-2 py-1 text-[9px] text-slate-300">{t}</span>)}</div>
                   <div className="mt-4 flex flex-wrap gap-2"><button type="button" onClick={() => openMarketplaceConnect(item)} className="inline-flex items-center gap-1 rounded-lg bg-indigo-400 px-3 py-2 text-[10px] font-semibold text-slate-950 hover:bg-indigo-300"><Plug className="h-3 w-3"/> Connect</button>{item.repositoryUrl && <a href={item.repositoryUrl} target="_blank" rel="noreferrer" className="rounded-lg bg-white/10 px-3 py-2 text-[10px] text-slate-200 hover:bg-white/15">Repository ↗</a>}</div>
                 </article>)}
