@@ -143,8 +143,15 @@ export default function McpHubPage() {
     // only as a catalog lookup key and always take the endpoint from catalog metadata.
     let catalogSlug = item.id.startsWith('hosted:') ? item.id.slice('hosted:'.length) : '';
     if (!catalogSlug && item.repositoryUrl) {
-      const match = item.repositoryUrl.match(/^https?:\\/\\/(?:www\\.)?github\\.com\\/([^/?#]+)\\/([^/?#]+)(?:\\.git)?(?:[/?#]|$)/i);
-      if (match) catalogSlug = `${match[1]}/${match[2].replace(/\\.git$/i, '')}`;
+      try {
+        const repoUrl = new URL(item.repositoryUrl);
+        if (repoUrl.hostname === 'github.com' || repoUrl.hostname === 'www.github.com') {
+          const parts = repoUrl.pathname.split('/').filter(Boolean);
+          if (parts.length >= 2) catalogSlug = `${parts[0]}/${parts[1].replace(/\.git$/i, '')}`;
+        }
+      } catch {
+        // Ignore malformed repository URLs.
+      }
     }
     if (!declaredEndpoint && catalogSlug) {
       try {
