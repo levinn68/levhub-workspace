@@ -240,7 +240,7 @@ app.get('/api/models', async (req, reply) => {
 });
 
 app.post('/api/models/refresh', async (req, reply) => {
-  requireSession(req, reply);
+  await requireSession(req, reply);
   const catalog = await router.listModels(true);
   await repo.recordAuditEvent('model_catalog_refresh', { count: catalog.items.length });
   return catalog;
@@ -251,7 +251,7 @@ app.post('/api/models/refresh', async (req, reply) => {
 // ============================================================================
 
 app.post('/api/chat', async (req, reply) => {
-  requireSession(req, reply);
+  await requireSession(req, reply);
   const parsed = z
     .object({
       conversationId: z.string().uuid().optional(),
@@ -293,7 +293,7 @@ app.post('/api/chat', async (req, reply) => {
 });
 
 app.post('/api/chat/tool-calls/:id/decision', async (req, reply) => {
-  requireSession(req, reply);
+  await requireSession(req, reply);
   const { id } = req.params as { id: string };
   const parsed = z.object({ approved: z.boolean() }).safeParse(req.body);
   if (!parsed.success) {
@@ -307,14 +307,14 @@ app.post('/api/chat/tool-calls/:id/decision', async (req, reply) => {
 // ============================================================================
 
 app.get('/api/conversations', async (req, reply) => {
-  requireSession(req, reply);
+  await requireSession(req, reply);
   const q = req.query as { cursor?: string; limit?: string; search?: string };
   const limit = Math.min(Math.max(Number(q.limit) || 30, 1), 100);
   return await repo.listConversations(limit, q.cursor, q.search);
 });
 
 app.post('/api/conversations', async (req, reply) => {
-  requireSession(req, reply);
+  await requireSession(req, reply);
   const parsed = z
     .object({ title: z.string().min(1).max(160).optional(), modelId: z.string().nullable().optional() })
     .safeParse(req.body ?? {});
@@ -323,13 +323,13 @@ app.post('/api/conversations', async (req, reply) => {
 });
 
 app.get('/api/conversations/:id', async (req, reply) => {
-  requireSession(req, reply);
+  await requireSession(req, reply);
   const { id } = req.params as { id: string };
   return await repo.getConversation(id);
 });
 
 app.patch('/api/conversations/:id', async (req, reply) => {
-  requireSession(req, reply);
+  await requireSession(req, reply);
   const { id } = req.params as { id: string };
   const parsed = z.object({ title: z.string().min(1).max(160) }).safeParse(req.body);
   if (!parsed.success) throw new LevhubError('INVALID_INPUT', 'Judul percakapan tidak valid.', 400);
@@ -337,7 +337,7 @@ app.patch('/api/conversations/:id', async (req, reply) => {
 });
 
 app.delete('/api/conversations/:id', async (req, reply) => {
-  requireSession(req, reply);
+  await requireSession(req, reply);
   const { id } = req.params as { id: string };
   await repo.deleteConversation(id);
   await repo.recordAuditEvent('conversation_deleted', { conversationId: id });
@@ -345,7 +345,7 @@ app.delete('/api/conversations/:id', async (req, reply) => {
 });
 
 app.get('/api/conversations/:id/export', async (req, reply) => {
-  requireSession(req, reply);
+  await requireSession(req, reply);
   const { id } = req.params as { id: string };
   const format = ((req.query as { format?: string }).format || 'markdown').toLowerCase();
   const data = await repo.getConversation(id);
@@ -371,7 +371,7 @@ app.get('/api/conversations/:id/export', async (req, reply) => {
 // ============================================================================
 
 app.get('/api/mcp', async (req, reply) => {
-  requireSession(req, reply);
+  await requireSession(req, reply);
   const [saved, runtimeServers] = await Promise.all([
     repo.isConfigured() ? repo.listIntegrations('mcp') : Promise.resolve([]),
     overdrive.isConfigured() ? overdrive.listMcpServers().catch(() => []) : Promise.resolve([]),
@@ -384,7 +384,7 @@ app.get('/api/mcp', async (req, reply) => {
 });
 
 app.post('/api/mcp/external', async (req, reply) => {
-  requireSession(req, reply);
+  await requireSession(req, reply);
   const parsed = z
     .object({
       displayName: z.string().min(1).max(100),
@@ -428,7 +428,7 @@ app.post('/api/mcp/external', async (req, reply) => {
 });
 
 app.post('/api/mcp/:id/test', async (req, reply) => {
-  requireSession(req, reply);
+  await requireSession(req, reply);
   const { id } = req.params as { id: string };
   const item = await repo.getIntegration(id);
   const cfg = item.config_public;
@@ -453,21 +453,21 @@ app.post('/api/mcp/:id/test', async (req, reply) => {
 });
 
 app.post('/api/mcp/:id/enable', async (req, reply) => {
-  requireSession(req, reply);
+  await requireSession(req, reply);
   const { id } = req.params as { id: string };
   const updated = await repo.updateIntegration(id, { enabled: true });
   return maskIntegration(updated);
 });
 
 app.post('/api/mcp/:id/disable', async (req, reply) => {
-  requireSession(req, reply);
+  await requireSession(req, reply);
   const { id } = req.params as { id: string };
   const updated = await repo.updateIntegration(id, { enabled: false });
   return maskIntegration(updated);
 });
 
 app.delete('/api/mcp/:id', async (req, reply) => {
-  requireSession(req, reply);
+  await requireSession(req, reply);
   const { id } = req.params as { id: string };
   externalMcp.invalidateCache(id);
   await repo.deleteIntegration(id);
@@ -476,7 +476,7 @@ app.delete('/api/mcp/:id', async (req, reply) => {
 });
 
 app.get('/api/mcp/:id/tools', async (req, reply) => {
-  requireSession(req, reply);
+  await requireSession(req, reply);
   const { id } = req.params as { id: string };
   const item = await repo.getIntegration(id);
   const cfg = item.config_public;
@@ -497,7 +497,7 @@ app.get('/api/mcp/:id/tools', async (req, reply) => {
 // ============================================================================
 
 app.get('/api/skills', async (req, reply) => {
-  requireSession(req, reply);
+  await requireSession(req, reply);
   const [imported, runtimeSkills] = await Promise.all([
     repo.isConfigured() ? repo.listSkills() : Promise.resolve([]),
     overdrive.isConfigured() ? overdrive.listSkills().catch(() => []) : Promise.resolve([]),
@@ -506,7 +506,7 @@ app.get('/api/skills', async (req, reply) => {
 });
 
 app.post('/api/skills/import', async (req, reply) => {
-  requireSession(req, reply);
+  await requireSession(req, reply);
 
   // Supports both JSON paste ({ markdown }) and multipart file upload (SKILL.md or ZIP)
   if (req.isMultipart()) {
@@ -573,7 +573,7 @@ app.post('/api/skills/import', async (req, reply) => {
 });
 
 app.post('/api/skills/:id/enable', async (req, reply) => {
-  requireSession(req, reply);
+  await requireSession(req, reply);
   const { id } = req.params as { id: string };
   const updated = await repo.updateSkillStatus(id, 'enabled');
   await repo.recordAuditEvent('skill_enabled', { skillId: id, slug: updated.slug });
@@ -581,13 +581,13 @@ app.post('/api/skills/:id/enable', async (req, reply) => {
 });
 
 app.post('/api/skills/:id/disable', async (req, reply) => {
-  requireSession(req, reply);
+  await requireSession(req, reply);
   const { id } = req.params as { id: string };
   return await repo.updateSkillStatus(id, 'disabled');
 });
 
 app.delete('/api/skills/:id', async (req, reply) => {
-  requireSession(req, reply);
+  await requireSession(req, reply);
   const { id } = req.params as { id: string };
   await repo.deleteSkill(id);
   return { deleted: true };
@@ -598,7 +598,7 @@ app.delete('/api/skills/:id', async (req, reply) => {
 // ============================================================================
 
 app.get('/api/settings', async (req, reply) => {
-  requireSession(req, reply);
+  await requireSession(req, reply);
   const preferences = repo.isConfigured() ? await repo.getSettings() : {};
   return {
     workspaceName: config.WORKSPACE_NAME,
@@ -627,7 +627,7 @@ app.get('/api/settings', async (req, reply) => {
 });
 
 app.patch('/api/settings', async (req, reply) => {
-  requireSession(req, reply);
+  await requireSession(req, reply);
   const parsed = z
     .object({
       key: z.enum(['general', 'mcp', 'skills']),
@@ -640,7 +640,7 @@ app.patch('/api/settings', async (req, reply) => {
 });
 
 app.get('/api/audit/events', async (req, reply) => {
-  requireSession(req, reply);
+  await requireSession(req, reply);
   const items = await repo.listRecentAuditEvents(40);
   return { items };
 });
