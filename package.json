@@ -1,0 +1,21 @@
+{
+  "name": "levhub-workspace",
+  "version": "1.0.0",
+  "private": true,
+  "description": "LEVHUB — Private Single-User AI Workspace (Hybrid Liquid Glass + AI Command Center)",
+  "workspaces": [
+    "apps/api",
+    "apps/web"
+  ],
+  "scripts": {
+    "dev:api": "npm --workspace @levhub/api run dev",
+    "dev:web": "npm --workspace @levhub/web run dev",
+    "build": "npm --workspace @levhub/api run build && npm --workspace @levhub/web run build",
+    "test:api": "npm --workspace @levhub/api run test",
+    "phase0:check": "node scripts/phase0-contract-check.mjs",
+    "hash-password": "node scripts/hash-password.mjs"
+  },
+  "engines": {
+    "node": ">=18.18.0"
+  }
+}
