@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Plug, Plus, Trash2, CheckCircle2, Power, RefreshCw } from 'lucide-react';
+import { Plug, Plus, Trash2, CheckCircle2, Power, RefreshCw, Search, Github, Database, Globe, Cloud, ArrowUpRight } from 'lucide-react';
 import { AppShell } from '@/components/AppShell';
 import { apiFetch } from '@/lib/api';
 
@@ -24,7 +24,7 @@ interface RuntimeMcpItem {
 }
 
 export default function McpHubPage() {
-  const [tab, setTab] = useState<'runtime' | 'external'>('external');
+  const [tab, setTab] = useState<'runtime' | 'external' | 'marketplace'>('marketplace');
   const [runtimeServers, setRuntimeServers] = useState<RuntimeMcpItem[]>([]);
   const [externalServers, setExternalServers] = useState<ExternalMcpItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -36,6 +36,8 @@ export default function McpHubPage() {
   const [transport, setTransport] = useState<'streamable_http' | 'sse'>('streamable_http');
   const [authType, setAuthType] = useState<'none' | 'bearer' | 'header'>('none');
   const [secret, setSecret] = useState('');
+  const [customHeaderName, setCustomHeaderName] = useState('Authorization');
+  const [marketQuery, setMarketQuery] = useState('');
 
   async function loadMcp() {
     setLoading(true);
@@ -60,11 +62,12 @@ export default function McpHubPage() {
     try {
       await apiFetch('/api/mcp/external', {
         method: 'POST',
-        body: JSON.stringify({ displayName, endpoint, transport, authType, secret: secret || undefined }),
+        body: JSON.stringify({ displayName, endpoint, transport, authType, secret: secret || undefined, customHeaderName: authType === 'header' ? customHeaderName : undefined }),
       });
       setDisplayName('');
       setEndpoint('');
       setSecret('');
+      setCustomHeaderName('Authorization');
       setFeedback('Koneksi MCP eksternal berhasil ditambahkan (secret terenkripsi di server).');
       await loadMcp();
     } catch (err) {
@@ -107,7 +110,8 @@ export default function McpHubPage() {
       }
     >
       <div className="space-y-5">
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={() => setTab('marketplace')} className={`rounded-xl px-4 py-2 text-xs font-semibold ${tab === 'marketplace' ? 'bg-indigo-300/20 text-indigo-100 ring-1 ring-indigo-200/30' : 'glass-card text-slate-300'}`}>Marketplace</button>
           <button
             type="button"
             onClick={() => setTab('external')}
@@ -132,7 +136,23 @@ export default function McpHubPage() {
           <div className="glass-card rounded-2xl border-sky-400/30 px-4 py-3 text-xs text-sky-100">{feedback}</div>
         )}
 
-        {tab === 'external' ? (
+        {tab === 'marketplace' ? (
+          <section className="space-y-4">
+            <div className="glass-panel rounded-2xl p-4 sm:p-5">
+              <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-base font-semibold">Temukan MCP Server</h2><p className="mt-1 text-xs text-slate-400">Katalog konektor pilihan. Periksa metode autentikasi sebelum menghubungkan.</p></div><span className="rounded-full bg-violet-300/10 px-3 py-1 text-[11px] text-violet-100">MCP Directory</span></div>
+              <div className="relative mt-4"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"/><input value={marketQuery} onChange={e => setMarketQuery(e.target.value)} placeholder="Cari GitHub, database, browser..." className="glass-input w-full rounded-xl py-3 pl-10 pr-3 text-sm"/></div>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              {[
+                {name:'GitHub MCP',category:'Developer tools',desc:'Akses repository, issue, pull request, dan workflow GitHub.',endpoint:'https://api.githubcopilot.com/mcp/',transport:'streamable_http' as const,auth:'bearer' as const,Icon:Github,tag:'GitHub'},
+                {name:'Custom MCP Server',category:'Universal',desc:'Hubungkan server MCP milikmu melalui Streamable HTTP atau SSE.',endpoint:'',transport:'streamable_http' as const,auth:'none' as const,Icon:Globe,tag:'Custom'},
+                {name:'Database MCP',category:'Data',desc:'Template konektor database. Gunakan endpoint resmi dari penyedia database.',endpoint:'',transport:'streamable_http' as const,auth:'header' as const,Icon:Database,tag:'Template'},
+                {name:'Cloud MCP',category:'Infrastructure',desc:'Template konektor layanan cloud dengan autentikasi header khusus.',endpoint:'',transport:'streamable_http' as const,auth:'header' as const,Icon:Cloud,tag:'Template'}
+              ].filter(item => `${item.name} ${item.category} ${item.desc}`.toLowerCase().includes(marketQuery.toLowerCase())).map(item => <article key={item.name} className="glass-card flex flex-col rounded-2xl p-4 transition hover:-translate-y-0.5 hover:border-indigo-200/30"><div className="flex items-start justify-between"><div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-300/20 to-sky-300/10 text-indigo-100"><item.Icon className="h-5 w-5"/></div><span className="rounded-full bg-white/[.06] px-2.5 py-1 text-[10px] text-slate-300">{item.tag}</span></div><h3 className="mt-4 text-sm font-semibold">{item.name}</h3><p className="mt-1 text-[11px] text-indigo-200">{item.category}</p><p className="mt-2 flex-1 text-xs leading-5 text-slate-400">{item.desc}</p><button type="button" onClick={() => {setDisplayName(item.name);setEndpoint(item.endpoint);setTransport(item.transport);setAuthType(item.auth);setCustomHeaderName('Authorization');setSecret('');setTab('external');}} className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-indigo-300 to-sky-300 px-3 py-2.5 text-xs font-semibold text-slate-950">Konfigurasi koneksi <ArrowUpRight className="h-3.5 w-3.5"/></button></article>)}
+            </div>
+            <p className="text-[11px] leading-5 text-slate-500">Catatan: katalog ini berisi template konektor, bukan klaim bahwa seluruh server sudah diverifikasi atau mendukung OAuth otomatis. OAuth belum diimplementasikan pada backend saat ini.</p>
+          </section>
+        ) : tab === 'external' ? (
           <div className="grid gap-5 lg:grid-cols-3">
             <form onSubmit={handleAddExternal} className="glass-panel space-y-3 rounded-2xl p-5">
               <h2 className="flex items-center gap-2 text-sm font-semibold text-white">
@@ -172,6 +192,7 @@ export default function McpHubPage() {
                   <option value="header" className="bg-slate-900">Custom Header</option>
                 </select>
               </div>
+              {authType === 'header' && <input required value={customHeaderName} onChange={e => setCustomHeaderName(e.target.value)} placeholder="Nama header (mis. Authorization, X-API-Key)" className="glass-input w-full rounded-xl px-3 py-2 text-xs text-white" />}
               {authType !== 'none' && (
                 <input
                   type="password"
