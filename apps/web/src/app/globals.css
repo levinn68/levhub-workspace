@@ -2,103 +2,36 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  color-scheme: dark;
-  --app-bg: #090c19;
-  --surface: rgba(19, 28, 53, .78);
-  --surface-raised: rgba(27, 36, 66, .88);
-  --line: rgba(190, 209, 255, .17);
-  --line-strong: rgba(190, 209, 255, .27);
-  --ink: #f4f7ff;
-  --muted: #aab7d2;
-  --accent: #94cfff;
-  --accent-2: #b7a5ff;
-  --mint: #79dfcf;
-  --glass-rim: inset 0 1px 0 rgba(235, 245, 255, .22), inset 0 -1px 0 rgba(156, 185, 255, .07);
-}
-
-* { box-sizing: border-box; }
-html { min-height: 100%; background: var(--app-bg); scroll-behavior: smooth; }
-body {
-  min-height: 100vh;
-  color: var(--ink);
-  background:
-    radial-gradient(ellipse at 10% 0%, #254977 0%, transparent 55%),
-    radial-gradient(ellipse at 96% 11%, #392759 0%, transparent 46%),
-    radial-gradient(ellipse at 64% 100%, #143c4a 0%, transparent 52%),
-    linear-gradient(150deg, #141d34, #090c19 68%);
-  background-attachment: fixed;
-  -webkit-font-smoothing: antialiased;
-  text-rendering: optimizeLegibility;
-}
-::selection { background: rgba(148, 207, 255, .29); }
-button, a, input, textarea, select { -webkit-tap-highlight-color: transparent; }
-button, a { touch-action: manipulation; }
-button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 3px;
-}
-button:disabled { cursor: not-allowed; opacity: .55; }
-
-.glass-panel, .glass-card, .levhub-floating-dock {
-  border: 1px solid var(--line);
-  background: var(--surface-raised);
-  box-shadow: var(--glass-rim), 0 16px 40px rgba(3, 6, 18, .32);
-}
-.glass-card { transition: border-color .2s ease, box-shadow .2s ease; }
-.glass-card:hover { border-color: var(--line-strong); }
-.glass-input {
-  width: 100%;
-  color: var(--ink);
-  background: rgba(7, 12, 28, .66);
-  border: 1px solid var(--line-strong);
-  box-shadow: inset 0 1px 4px rgba(0, 0, 0, .23);
-  transition: border-color .18s ease, box-shadow .18s ease;
-}
-.glass-input::placeholder { color: #a2aec8; }
-.glass-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(148, 207, 255, .14); }
-.glass-input option { background: #17203a; color: var(--ink); }
-
-main, main > * { min-width: 0; }
-main .glass-panel, main .glass-card { border-radius: 1.5rem; }
-main h1, main h2, main h3 { letter-spacing: -.02em; }
-main p { overflow-wrap: anywhere; }
-main button, main a { transition: color .18s ease, background-color .18s ease, border-color .18s ease, transform .18s ease; }
-main button:active { transform: translateY(1px); }
-
-.levhub-floating-dock { border-color: var(--line-strong); box-shadow: var(--glass-rim), 0 14px 42px rgba(3, 6, 18, .56); }
-.dock-item { position: relative; isolation: isolate; transition: color .18s ease, background .18s ease, transform .18s ease; }
-.dock-item:active { transform: scale(.96); }
-.dock-item-active {
-  background: linear-gradient(145deg, rgba(148, 207, 255, .24), rgba(183, 165, 255, .14));
-  box-shadow: var(--glass-rim), 0 3px 12px rgba(7, 12, 32, .24);
-}
-
-@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .glass-panel, .levhub-floating-dock {
-    --glass-blur: 24px;
-    background: linear-gradient(145deg, rgba(128, 167, 228, .19), transparent 52%), rgba(14, 21, 43, .64);
-    backdrop-filter: blur(var(--glass-blur)) saturate(155%);
-    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(155%);
-  }
-  .glass-card { background: linear-gradient(150deg, rgba(120, 153, 210, .17), transparent 65%), rgba(16, 23, 46, .73); }
-  .levhub-floating-dock { --glass-blur: 30px; }
-}
-
-@media (max-width: 639px) {
-  body { background-attachment: scroll; }
-  main { padding: 1rem 1rem 5.5rem !important; }
-  .glass-panel, .levhub-floating-dock { --glass-blur: 16px; }
-  input, select, textarea { font-size: 16px !important; }
-}
-@media (prefers-reduced-transparency: reduce) {
-  .glass-panel, .glass-card, .levhub-floating-dock, .glass-input {
-    background: #17203a;
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
-  main button:active, .dock-item:active { transform: none; }
-}
+:root {color-scheme:dark;--app-bg:#171614;--surface:#211e1b;--surface-raised:#2c2722;--line:#423932;--line-strong:#625148;--ink:#faf4eb;--muted:#c6b8aa;--accent:#ffad88;--accent-2:#ffd39e;--mint:#b4c799;}
+html,body {min-height:100%;background:var(--app-bg);color:var(--ink);}
+body {font-family:system-ui,sans-serif;-webkit-font-smoothing:antialiased;}
+::selection {background:#714631;color:#fff;}
+:focus-visible {outline:2px solid var(--accent);outline-offset:3px;}
+button:disabled {opacity:.55;cursor:not-allowed;}
+.glass-panel,.glass-card,.levhub-floating-dock {background:var(--surface);border:1px solid var(--line);}
+.glass-input {min-width:0;width:100%;background:#1b1916;border:1px solid var(--line-strong);color:var(--ink);}
+.glass-input::placeholder {color:var(--muted);}
+.glass-input option {background:var(--surface);color:var(--ink);}
+.workspace-action {display:inline-flex;justify-content:center;align-items:center;min-height:40px;padding:.45rem .85rem;border:1px solid var(--line-strong);border-radius:.75rem;background:var(--surface-raised);font-size:.85rem;font-weight:600;}
+.workspace-action:hover,.dock-item-active {background:#4b3329;color:var(--accent);}
+.workspace-primary {background:var(--accent);color:#271712;border-color:transparent;}
+.workspace-primary:hover {background:#ffc5aa;color:#271712;}
+main p {overflow-wrap:anywhere;}
+header.sticky {background:var(--app-bg);}
+header.sticky > div {height:56px;}
+main {min-height:calc(100dvh - 56px)!important;min-width:0;}
+/* Scope chat layout to the existing chat model selector. */
+body:has(#chat-model-select) main {max-width:54rem;padding-top:0;padding-bottom:0;}
+body:has(#chat-model-select) main > div {min-height:0;gap:.6rem;}
+body:has(#chat-model-select) main > div > .glass-panel:first-of-type:not(:last-child) {background:none;border:0;border-radius:0;box-shadow:none;overflow:visible;padding:1.25rem 0;}
+body:has(#chat-model-select) main > div > .glass-panel:first-of-type > div:only-child.text-center {min-height:clamp(180px,39dvh,400px);height:auto;}
+body:has(#chat-model-select) main > div > .glass-panel:first-of-type h2 {font-size:clamp(1.4rem,4vw,2rem);line-height:1.2;letter-spacing:-.035em;}
+body:has(#chat-model-select) main > div > .glass-panel:first-of-type .justify-start > .glass-card {background:none;border:0;padding-inline:0;max-width:100%;width:100%;min-width:0;}
+body:has(#chat-model-select) main > div > .glass-panel:first-of-type .justify-end > div {background:#3b2b23;color:var(--ink);box-shadow:none;min-width:0;}
+body:has(#chat-model-select) main > div > .glass-panel:last-child {position:sticky;bottom:0;z-index:20;margin-bottom:1rem;background:var(--surface-raised);border-radius:1.5rem;box-shadow:0 8px 28px #0005;}
+body:has(#chat-model-select) main textarea {border:0;background:transparent;box-shadow:none;}
+body:has(#chat-model-select) main button[type=submit] {background:var(--accent);color:#271712;box-shadow:none;}
+#chat-model-select {max-width:min(44vw,220px);}
+@media(max-width:1023px){main {padding-bottom:calc(6rem + env(safe-area-inset-bottom));} body:has(#chat-model-select) .levhub-floating-dock {display:none;} body:has(#chat-model-select) main > div > .glass-panel:last-child {bottom:env(safe-area-inset-bottom);}}
+@media(max-width:639px){input,textarea,select {font-size:16px!important;}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;}}
