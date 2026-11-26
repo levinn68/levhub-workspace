@@ -41,6 +41,7 @@ export function AppShell({ title, topBarExtra, children }: { title: string; topB
     setLogoutError(false);
     try {
       await apiFetch('/api/auth/logout', { method: 'POST' });
+      setSession('checking');
       router.replace('/login');
     } catch {
       setLogoutError(true);
@@ -48,16 +49,11 @@ export function AppShell({ title, topBarExtra, children }: { title: string; topB
     }
   }
 
-  if (session !== 'ready') return <div className="workspace-gate"><div>
-    <p role={session === 'error' ? 'alert' : 'status'}>{session === 'error' ? 'Sesi belum bisa diperiksa. Cek koneksi lalu coba lagi.' : 'Memeriksa sesi…'}</p>
-    {session === 'error' && <button type="button" onClick={() => { setSession('checking'); setAttempt((n) => n + 1); }}>Coba lagi</button>}
-  </div></div>;
-
-  const current = destinations.find(({ href }) => pathname === href)?.href ?? [...destinations].reverse().find(({ href }) => pathname.startsWith(`${href}/`))?.href;
+  const current = [...destinations].reverse().find(({ href }) => pathname === href || pathname.startsWith(`${href}/`))?.href;
   const navigation = destinations.map(({ href, label, icon: Icon }) => <Link key={href} href={href} aria-current={current === href ? 'page' : undefined}>
     <Icon aria-hidden="true" size={17} /><span>{label}</span>
   </Link>);
-  const signOut = <><button className="workspace-logout" type="button" disabled={loggingOut} onClick={() => void logout()}><LogOut aria-hidden="true" size={17} /> Keluar</button>{logoutError && <p role="alert" className="workspace-error">Gagal keluar. Coba lagi.</p>}</>;
+  const signOut = session === 'ready' && <><button className="workspace-logout" type="button" disabled={loggingOut} onClick={() => void logout()}><LogOut aria-hidden="true" size={17} /> Keluar</button>{logoutError && <p role="alert" className="workspace-error">Gagal keluar. Coba lagi.</p>}</>;
 
   return <div className="workspace-frame" data-chat={pathname === '/chat' ? 'true' : undefined}>
     <a className="workspace-skip" href="#workspace-main">Lewati ke konten</a>
@@ -73,9 +69,15 @@ export function AppShell({ title, topBarExtra, children }: { title: string; topB
           <div className="workspace-menu-panel"><nav aria-label="Navigasi mobile">{navigation}</nav>{signOut}</div>
         </details>
         <p className="workspace-title">{title}</p>
-        {topBarExtra && <div className="workspace-controls">{topBarExtra}</div>}
+        {session === 'ready' && topBarExtra && <div className="workspace-controls">{topBarExtra}</div>}
       </header>
-      <main id="workspace-main" className="workspace-main">{children}</main>
+      <main id="workspace-main" className="workspace-main" aria-busy={session === 'checking'}>
+        {session === 'ready' && children}
+        {session === 'error' && <section className="glass-card space-y-3 rounded-xl p-4">
+          <p role="alert">Workspace belum bisa dibuka. Cek koneksi lalu coba lagi.</p>
+          <button type="button" className="rounded-lg border px-3 py-2" onClick={() => { setSession('checking'); setAttempt((n) => n + 1); }}>Coba lagi</button>
+        </section>}
+      </main>
     </div>
   </div>;
 }
