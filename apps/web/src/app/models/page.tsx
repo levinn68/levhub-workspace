@@ -1,155 +1,32 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
-import { RefreshCw, Search, Cpu, Code2 } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { AppShell } from '@/components/AppShell';
 import { apiFetch } from '@/lib/api';
 
-interface ModelEntry {
-  id: string;
-  displayName: string;
-  provider?: string;
-  available: boolean;
-  capabilities?: { streaming?: boolean; tools?: boolean; vision?: boolean; contextLength?: number };
-  rawMetadata?: Record<string, unknown>;
-}
+type Model = { id: string; displayName: string; provider?: string; available: boolean; capabilities?: { streaming?: boolean; tools?: boolean; vision?: boolean; contextLength?: number }; rawMetadata?: Record<string, unknown> };
+type Catalog = { items: Model[]; fetchedAt: string; stale: boolean };
 
 export default function ModelsPage() {
-  const [items, setItems] = useState<ModelEntry[]>([]);
-  const [fetchedAt, setFetchedAt] = useState<string | null>(null);
-  const [stale, setStale] = useState(false);
+  const [catalog, setCatalog] = useState<Catalog>();
+  const [busy, setBusy] = useState(true);
+  const [error, setError] = useState('');
   const [query, setQuery] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-
-  async function loadModels(force = false) {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await apiFetch<{ items: ModelEntry[]; fetchedAt: string; stale: boolean }>(
-        force ? '/api/models/refresh' : '/api/models',
-        { method: force ? 'POST' : 'GET' },
-      );
-      setItems(res.items);
-      setFetchedAt(res.fetchedAt);
-      setStale(res.stale);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Gagal memuat katalog model.');
-    } finally {
-      setLoading(false);
-    }
+  const [availableOnly, setAvailableOnly] = useState(false);
+  async function load(refresh = false) {
+    setBusy(true); setError('');
+    try { setCatalog(await apiFetch<Catalog>(refresh ? '/api/models/refresh' : '/api/models', { method: refresh ? 'POST' : 'GET' })); }
+    catch (err) { setError(err instanceof Error ? err.message : 'Katalog gagal dimuat.'); }
+    finally { setBusy(false); }
   }
-
-  useEffect(() => {
-    loadModels(false);
-  }, []);
-
-  const filtered = items.filter((m) =>
-    `${m.id} ${m.displayName} ${m.provider || ''}`.toLowerCase().includes(query.toLowerCase()),
-  );
-
-  return (
-    <AppShell
-      title="Katalog Model Router"
-      topBarExtra={
-        <button
-          type="button"
-          onClick={() => loadModels(true)}
-          disabled={loading}
-          className="inline-flex items-center gap-1.5 rounded-xl bg-white/10 px-3 py-1.5 text-xs font-medium text-white hover:bg-white/15 disabled:opacity-50"
-        >
-          <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
-          Segarkan
-        </button>
-      }
-    >
-      <div className="space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="relative flex-1 min-w-[220px]">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <input
-              type="search"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Cari model atau provider..."
-              className="glass-input w-full rounded-xl py-2 pl-9 pr-3 text-sm text-white"
-            />
-          </div>
-          {fetchedAt && (
-            <p className="text-xs text-slate-400">
-              Terakhir diperbarui: {new Date(fetchedAt).toLocaleString('id-ID')} {stale ? '(cache lama)' : ''}
-            </p>
-          )}
-        </div>
-
-        {error && (
-          <div role="alert" className="rounded-2xl border border-rose-500/30 bg-rose-500/10 p-4 text-xs text-rose-200">
-            {error}
-          </div>
-        )}
-
-        {!loading && !error && filtered.length === 0 && (
-          <div className="glass-panel rounded-2xl p-8 text-center text-sm text-slate-400">
-            Tidak ada model yang cocok dari Router API.
-          </div>
-        )}
-
-        <div className="grid gap-3 md:grid-cols-2">
-          {filtered.map((m) => (
-            <div key={m.id} className="glass-card rounded-2xl p-4">
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <Cpu className="h-4 w-4 shrink-0 text-sky-400" />
-                    <h2 className="truncate text-sm font-semibold text-white">{m.displayName}</h2>
-                  </div>
-                  <p className="mt-0.5 truncate font-mono text-[11px] text-slate-400">{m.id}</p>
-                </div>
-                {m.provider && (
-                  <span className="rounded-lg bg-white/10 px-2 py-0.5 text-[11px] text-slate-300">{m.provider}</span>
-                )}
-              </div>
-
-              {m.capabilities && (
-                <div className="mt-3 flex flex-wrap gap-1.5 text-[11px]">
-                  {m.capabilities.streaming && (
-                    <span className="rounded-md bg-sky-500/15 px-2 py-0.5 text-sky-200">Streaming</span>
-                  )}
-                  {m.capabilities.tools && (
-                    <span className="rounded-md bg-indigo-500/15 px-2 py-0.5 text-indigo-200">Tool Calling</span>
-                  )}
-                  {m.capabilities.vision && (
-                    <span className="rounded-md bg-emerald-500/15 px-2 py-0.5 text-emerald-200">Vision</span>
-                  )}
-                  {m.capabilities.contextLength && (
-                    <span className="rounded-md bg-white/10 px-2 py-0.5 text-slate-300">
-                      {m.capabilities.contextLength.toLocaleString('id-ID')} ctx
-                    </span>
-                  )}
-                </div>
-              )}
-
-              <div className="mt-3 flex justify-end">
-                <button
-                  type="button"
-                  onClick={() => setExpandedId(expandedId === m.id ? null : m.id)}
-                  className="inline-flex items-center gap-1 text-[11px] text-slate-400 hover:text-sky-300"
-                >
-                  <Code2 className="h-3.5 w-3.5" />
-                  {expandedId === m.id ? 'Sembunyikan Metadata' : 'Metadata Upstream'}
-                </button>
-              </div>
-
-              {expandedId === m.id && m.rawMetadata && (
-                <pre className="mt-2 max-h-48 overflow-auto rounded-xl bg-black/50 p-2.5 font-mono text-[11px] text-slate-300">
-                  {JSON.stringify(m.rawMetadata, null, 2)}
-                </pre>
-              )}
-            </div>
-          ))}
-        </div>
-      </div>
-    </AppShell>
-  );
+  useEffect(() => { void load(); }, []);
+  const models = (catalog?.items ?? []).filter((model) => (!availableOnly || model.available) && `${model.displayName} ${model.id} ${model.provider ?? ''}`.toLowerCase().includes(query.trim().toLowerCase()));
+  return <AppShell title="Model"><section className="space-y-5">
+    <header className="flex flex-wrap items-start justify-between gap-3"><div><h1 className="text-2xl font-semibold">Katalog model</h1><p className="mt-1 text-sm text-[var(--muted)]">Model dari Router API.</p></div><button type="button" disabled={busy} onClick={() => void load(true)} className="rounded-lg border border-[var(--line)] px-4 py-2">Segarkan</button></header>
+    <div className="flex flex-wrap items-center gap-3"><input aria-label="Cari model atau provider" type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Cari model atau provider" className="glass-input min-w-0 flex-1 rounded-lg px-3 py-2" /><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={availableOnly} onChange={(event) => setAvailableOnly(event.target.checked)} /> Hanya yang tersedia</label></div>
+    {busy && <p role="status">Memuat katalog…</p>}{error && <p role="alert">{error}</p>}
+    {catalog && <p className="text-sm text-[var(--muted)]">{models.length} model · {catalog.stale ? 'Data cache · ' : ''}{new Date(catalog.fetchedAt).toLocaleString('id-ID')}</p>}
+    {!busy && !error && !models.length && <p>Tidak ada model yang cocok.</p>}
+    <ul className="divide-y divide-[var(--line)] rounded-xl border border-[var(--line)] bg-[var(--surface)]">{models.map((model) => <li key={model.id} className="space-y-2 p-4"><div className="flex flex-wrap justify-between gap-2"><h2 className="break-all font-semibold">{model.displayName}</h2><span className="text-sm text-[var(--muted)]">{model.available ? 'Tersedia' : 'Nonaktif'}</span></div><p className="break-all font-mono text-xs text-[var(--muted)]">{model.provider ? `${model.provider} · ` : ''}{model.id}</p>{model.capabilities && <p className="text-sm">{[model.capabilities.streaming && 'Streaming', model.capabilities.tools && 'Tools', model.capabilities.vision && 'Vision', model.capabilities.contextLength && `${model.capabilities.contextLength.toLocaleString('id-ID')} konteks`].filter(Boolean).join(' · ')}</p>}{model.rawMetadata && <details><summary className="cursor-pointer text-sm">Metadata</summary><pre className="mt-2 max-h-48 overflow-auto text-xs">{JSON.stringify(model.rawMetadata, null, 2)}</pre></details>}</li>)}</ul>
+  </section></AppShell>;
 }
