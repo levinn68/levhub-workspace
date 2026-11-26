@@ -4,16 +4,17 @@
 
 :root {
   color-scheme: dark;
-  --app-bg: #080b13;
-  --surface: rgba(17, 23, 38, .78);
-  --surface-raised: rgba(24, 32, 51, .88);
-  --line: rgba(168, 185, 220, .13);
-  --line-strong: rgba(168, 185, 220, .2);
+  --app-bg: #090c19;
+  --surface: rgba(19, 28, 53, .78);
+  --surface-raised: rgba(27, 36, 66, .88);
+  --line: rgba(190, 209, 255, .17);
+  --line-strong: rgba(190, 209, 255, .27);
   --ink: #f4f7ff;
-  --muted: #96a3bb;
-  --accent: #78aaff;
-  --accent-2: #9b8cff;
-  --mint: #68dbc0;
+  --muted: #aab7d2;
+  --accent: #94cfff;
+  --accent-2: #b7a5ff;
+  --mint: #79dfcf;
+  --glass-rim: inset 0 1px 0 rgba(235, 245, 255, .22), inset 0 -1px 0 rgba(156, 185, 255, .07);
 }
 
 * { box-sizing: border-box; }
@@ -22,90 +23,82 @@ body {
   min-height: 100vh;
   color: var(--ink);
   background:
-    radial-gradient(ellipse 58% 42% at 5% -5%, rgba(66, 115, 205, .18), transparent 70%),
-    radial-gradient(ellipse 46% 38% at 100% 8%, rgba(116, 91, 202, .13), transparent 72%),
-    radial-gradient(ellipse 55% 48% at 50% 110%, rgba(35, 99, 120, .09), transparent 75%),
-    linear-gradient(145deg, #0d1320 0%, #080b13 58%, #0c101b 100%);
+    radial-gradient(ellipse at 10% 0%, #254977 0%, transparent 55%),
+    radial-gradient(ellipse at 96% 11%, #392759 0%, transparent 46%),
+    radial-gradient(ellipse at 64% 100%, #143c4a 0%, transparent 52%),
+    linear-gradient(150deg, #141d34, #090c19 68%);
   background-attachment: fixed;
-  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
-::selection { background: rgba(120, 170, 255, .3); }
+::selection { background: rgba(148, 207, 255, .29); }
 button, a, input, textarea, select { -webkit-tap-highlight-color: transparent; }
 button, a { touch-action: manipulation; }
 button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible {
-  outline: 2px solid var(--accent); outline-offset: 3px;
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
 }
 button:disabled { cursor: not-allowed; opacity: .55; }
 
-.glass-panel {
-  background: linear-gradient(145deg, rgba(20, 28, 45, .9), rgba(12, 18, 31, .88));
+.glass-panel, .glass-card, .levhub-floating-dock {
   border: 1px solid var(--line);
-  box-shadow: 0 20px 60px rgba(0,0,0,.2), inset 0 1px 0 rgba(255,255,255,.055);
-  backdrop-filter: blur(24px) saturate(135%);
-  -webkit-backdrop-filter: blur(24px) saturate(135%);
+  background: var(--surface-raised);
+  box-shadow: var(--glass-rim), 0 16px 40px rgba(3, 6, 18, .32);
 }
-.glass-card {
-  background: linear-gradient(145deg, rgba(25, 34, 54, .82), rgba(16, 23, 38, .9));
-  border: 1px solid var(--line);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.045), 0 12px 30px rgba(0,0,0,.14);
-  transition: border-color .2s ease, background .2s ease, transform .2s ease, box-shadow .2s ease;
-}
-.glass-card:hover { border-color: rgba(133, 169, 235, .23); }
+.glass-card { transition: border-color .2s ease, box-shadow .2s ease; }
+.glass-card:hover { border-color: var(--line-strong); }
 .glass-input {
   width: 100%;
-  background: rgba(7, 12, 22, .64);
-  border: 1px solid var(--line-strong);
   color: var(--ink);
-  transition: border-color .18s ease, box-shadow .18s ease, background .18s ease;
+  background: rgba(7, 12, 28, .66);
+  border: 1px solid var(--line-strong);
+  box-shadow: inset 0 1px 4px rgba(0, 0, 0, .23);
+  transition: border-color .18s ease, box-shadow .18s ease;
 }
-.glass-input::placeholder { color: #75829b; }
-.glass-input:focus {
-  outline: none;
-  border-color: rgba(120, 170, 255, .7);
-  background: rgba(12, 19, 33, .94);
-  box-shadow: 0 0 0 3px rgba(120, 170, 255, .13);
-}
-.glass-input option { background: #111a2b; color: #f4f7ff; }
+.glass-input::placeholder { color: #a2aec8; }
+.glass-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(148, 207, 255, .14); }
+.glass-input option { background: #17203a; color: var(--ink); }
 
-main { min-width: 0; }
-main > * { min-width: 0; }
-main .glass-panel, main .glass-card { border-radius: 1.15rem; }
+main, main > * { min-width: 0; }
+main .glass-panel, main .glass-card { border-radius: 1.5rem; }
 main h1, main h2, main h3 { letter-spacing: -.02em; }
 main p { overflow-wrap: anywhere; }
 main button, main a { transition: color .18s ease, background-color .18s ease, border-color .18s ease, transform .18s ease; }
 main button:active { transform: translateY(1px); }
 
-
-/* Floating five-destination Liquid Glass dock */
-.levhub-floating-dock {
-  background: linear-gradient(155deg, rgba(34, 43, 62, .78), rgba(12, 18, 31, .84));
-  border: 1px solid rgba(210, 226, 255, .2);
-  -webkit-backdrop-filter: blur(30px) saturate(190%);
-  backdrop-filter: blur(30px) saturate(190%);
-  box-shadow:
-    inset 0 1.2px 1px rgba(255,255,255,.22),
-    inset 0 -1px 1px rgba(255,255,255,.035),
-    0 18px 42px rgba(0,0,0,.48),
-    0 2px 12px rgba(75,125,210,.12);
-}
+.levhub-floating-dock { border-color: var(--line-strong); box-shadow: var(--glass-rim), 0 14px 42px rgba(3, 6, 18, .56); }
 .dock-item { position: relative; isolation: isolate; transition: color .18s ease, background .18s ease, transform .18s ease; }
 .dock-item:active { transform: scale(.96); }
 .dock-item-active {
-  background: linear-gradient(150deg, rgba(107,177,255,.2), rgba(113,133,255,.12));
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.14), 0 3px 12px rgba(30,75,145,.16);
+  background: linear-gradient(145deg, rgba(148, 207, 255, .24), rgba(183, 165, 255, .14));
+  box-shadow: var(--glass-rim), 0 3px 12px rgba(7, 12, 32, .24);
 }
-@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .levhub-floating-dock { background: rgba(17,24,39,.97); }
+
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass-panel, .levhub-floating-dock {
+    --glass-blur: 24px;
+    background: linear-gradient(145deg, rgba(128, 167, 228, .19), transparent 52%), rgba(14, 21, 43, .64);
+    backdrop-filter: blur(var(--glass-blur)) saturate(155%);
+    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(155%);
+  }
+  .glass-card { background: linear-gradient(150deg, rgba(120, 153, 210, .17), transparent 65%), rgba(16, 23, 46, .73); }
+  .levhub-floating-dock { --glass-blur: 30px; }
 }
 
 @media (max-width: 639px) {
   body { background-attachment: scroll; }
   main { padding: 1rem 1rem 5.5rem !important; }
-  .glass-panel, .glass-card { backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
+  .glass-panel, .levhub-floating-dock { --glass-blur: 16px; }
   input, select, textarea { font-size: 16px !important; }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .glass-panel, .glass-card, .levhub-floating-dock, .glass-input {
+    background: #17203a;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+  main button:active, .dock-item:active { transform: none; }
 }
