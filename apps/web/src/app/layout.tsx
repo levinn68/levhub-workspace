@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import './globals.css';
 import './workspace.css';
+import './chat-mobile.css';
 
 export const metadata: Metadata = {
   title: 'LEVHUB — Workspace AI Pribadi',

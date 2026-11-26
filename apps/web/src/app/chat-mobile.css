@@ -1,0 +1,45 @@
+/* Scope to the chat route and its existing transcript/composer markup. */
+.workspace-frame[data-chat=true] .workspace-main > div > .glass-panel:first-of-type > .justify-start > .glass-card {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  padding-inline: 0;
+  background: transparent;
+  border: 0;
+  overflow-wrap: anywhere;
+}
+.workspace-frame[data-chat=true] .workspace-main > div > .glass-panel:first-of-type > .justify-end > div {
+  min-width: 0;
+  background: #3b2b24;
+  color: var(--ink);
+  --tw-ring-shadow: 0 0 #0000;
+  overflow-wrap: anywhere;
+}
+.workspace-frame[data-chat=true] .workspace-main > div > .glass-panel:first-of-type pre {
+  max-width: 100%;
+  overflow-x: auto;
+}
+.workspace-frame[data-chat=true] .workspace-main > div > .glass-panel:first-of-type > .text-center {
+  height: auto;
+  min-height: clamp(11rem, 36dvh, 21rem);
+}
+.workspace-frame[data-chat=true] .workspace-main > div > .glass-panel:last-child {
+  max-height: min(60dvh, 28rem);
+  overflow-y: auto;
+}
+.workspace-frame[data-chat=true] .workspace-main > div > .glass-panel:last-child button {
+  min-height: 44px;
+  min-width: 44px;
+}
+.workspace-frame[data-chat=true] .workspace-main > div > .glass-panel:last-child textarea {
+  line-height: 1.45;
+}
+@media (max-width: 639px) {
+  .workspace-frame[data-chat=true] .workspace-controls { max-width: 48%; }
+  .workspace-frame[data-chat=true] .workspace-main > div > .glass-panel:last-child { padding: .5rem; }
+  .workspace-frame[data-chat=true] .workspace-main > div > .glass-panel:last-child form > button { padding-inline: .65rem; }
+}
+@media (max-height: 480px) {
+  /* Keep the composer in normal flow on short viewports instead of covering the conversation. */
+  .workspace-frame[data-chat=true] .workspace-main > div > .glass-panel:last-child { position: static; max-height: none; }
+}
