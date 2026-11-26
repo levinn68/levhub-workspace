@@ -1,6 +1,4 @@
-'use client';
-
-type Part = { kind: 'text'; text: string } | { kind: 'code'; text: string } | { kind: 'quote'; text: string } | { kind: 'heading'; text: string } | { kind: 'list'; items: string[] };
+type Part = { kind: 'list'; items: string[]; ordered: boolean } | { kind: 'code'; text: string } | { kind: 'quote'; text: string } | { kind: 'heading'; text: string } | { kind: 'text'; text: string };
 
 function parse(source: string): Part[] {
   const parts: Part[] = [];
@@ -10,17 +8,26 @@ function parse(source: string): Part[] {
       parts.push({ kind: 'code', text: block.slice(3, -3).replace(/^[\w-]*\n/, '') });
       continue;
     }
-    let list: string[] = [];
-    const flushList = () => { if (list.length) { parts.push({ kind: 'list', items: list }); list = []; } };
+    let items: string[] = [];
+    let ordered = false;
+    const flush = () => { if (items.length) { parts.push({ kind: 'list', items, ordered }); items = []; } };
     for (const line of block.split('\n')) {
-      if (!line.trim()) { flushList(); continue; }
-      if (/^\s*[-*+]\s+/.test(line)) { list.push(line.replace(/^\s*[-*+]\s+/, '')); continue; }
-      flushList();
+      if (!line.trim()) { flush(); continue; }
+      const bullet = line.match(/^\s*[-*+]\s+(.*)$/);
+      const number = line.match(/^\s*\d+[.)]\s+(.*)$/);
+      if (bullet || number) {
+        const isOrdered = Boolean(number);
+        if (items.length && ordered !== isOrdered) flush();
+        ordered = isOrdered;
+        items.push((bullet ?? number)![1]);
+        continue;
+      }
+      flush();
       if (line.startsWith('> ')) parts.push({ kind: 'quote', text: line.slice(2) });
       else if (/^#{1,6}\s/.test(line)) parts.push({ kind: 'heading', text: line.replace(/^#{1,6}\s+/, '') });
       else parts.push({ kind: 'text', text: line });
     }
-    flushList();
+    flush();
   }
   return parts;
 }
@@ -37,7 +44,9 @@ export function SafeMarkdown({ content }: { content: string }) {
     if (part.kind === 'code') return <pre key={index}><code>{part.text}</code></pre>;
     if (part.kind === 'quote') return <blockquote key={index}>{inline(part.text)}</blockquote>;
     if (part.kind === 'heading') return <h3 key={index}>{inline(part.text)}</h3>;
-    if (part.kind === 'list') return <ul key={index}>{part.items.map((item, i) => <li key={i}>{inline(item)}</li>)}</ul>;
+    if (part.kind === 'list') return part.ordered
+      ? <ol key={index}>{part.items.map((item, i) => <li key={i}>{inline(item)}</li>)}</ol>
+      : <ul key={index}>{part.items.map((item, i) => <li key={i}>{inline(item)}</li>)}</ul>;
     return <p key={index}>{inline(part.text)}</p>;
   })}</div>;
 }
