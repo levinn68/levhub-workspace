@@ -1,134 +1,58 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Shield, Activity, LogOut, ArrowRight } from 'lucide-react';
 import { AppShell } from '@/components/AppShell';
 import { apiFetch } from '@/lib/api';
 
-interface SettingsPayload {
+type Settings = {
   workspaceName: string;
-  connections: {
-    router: { endpoint: string; hasApiKey: boolean };
-    runtime: { endpoint: string | null; hasToken: boolean };
-    supabase: { configured: boolean; bucket: string };
-  };
-  limits: {
-    maxToolCallsPerTurn: number;
-    toolExecutionTimeoutMs: number;
-    maxSkillArchiveBytes: number;
-    sessionTtlHours: number;
-  };
-}
+  connections: { router: { hasApiKey: boolean }; supabase: { configured: boolean; bucket: string } };
+  limits: { sessionTtlHours: number; maxToolCallsPerTurn: number; toolExecutionTimeoutMs: number; maxSkillArchiveBytes: number };
+};
+type Audit = { id: string; event_type: string; created_at: string };
+const action = 'inline-flex min-h-11 items-center rounded-lg border border-[var(--line)] px-3 text-sm disabled:opacity-50';
 
 export default function SettingsPage() {
   const router = useRouter();
-  const [data, setData] = useState<SettingsPayload | null>(null);
-  const [audit, setAudit] = useState<Array<{ id: string; event_type: string; created_at: string }>>([]);
+  const [settings, setSettings] = useState<Settings>();
+  const [audit, setAudit] = useState<Audit[]>();
+  const [settingsError, setSettingsError] = useState(false);
+  const [auditError, setAuditError] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [logoutError, setLogoutError] = useState(false);
 
   useEffect(() => {
-    apiFetch<SettingsPayload>('/api/settings').then(setData).catch(() => {});
-    apiFetch<{ items: Array<{ id: string; event_type: string; created_at: string }> }>('/api/audit/events')
-      .then((res) => setAudit(res.items))
-      .catch(() => {});
-  }, []);
+    const controller = new AbortController();
+    const { signal } = controller;
+    void apiFetch<Settings>('/api/settings', { signal }).then((value) => { if (!signal.aborted) setSettings(value); }).catch(() => { if (!signal.aborted) setSettingsError(true); });
+    void apiFetch<{ items: Audit[] }>('/api/audit/events', { signal }).then(({ items }) => { if (!signal.aborted) setAudit(items); }).catch(() => { if (!signal.aborted) setAuditError(true); });
+    return () => controller.abort();
+  }, [attempt]);
 
-  async function handleLogoutAll() {
-    if (!confirm('Cabut semua sesi aktif LEVHUB? Anda akan perlu login ulang.')) return;
-    await apiFetch('/api/auth/logout-all', { method: 'POST' });
-    router.replace('/login');
+  async function logoutAll() {
+    setBusy(true); setLogoutError(false);
+    try { await apiFetch('/api/auth/logout-all', { method: 'POST' }); router.replace('/login'); }
+    catch { setLogoutError(true); setBusy(false); }
   }
 
-  return (
-    <AppShell title="Pengaturan LEVHUB">
-      <div className="space-y-5">
-        <div className="grid gap-4 md:grid-cols-2">
-          <div className="glass-panel rounded-2xl p-5">
-            <h2 className="flex items-center gap-2 text-sm font-semibold text-white">
-              <Activity className="h-4 w-4 text-sky-400" /> Status Koneksi & Secret
-            </h2>
-            <p className="mt-1 text-xs text-slate-400">
-              Nilai secret bersifat write-only dan tidak pernah dikirim ke browser.
-            </p>
-            {data && (
-              <dl className="mt-4 space-y-2 text-xs">
-                <div className="flex justify-between">
-                  <dt className="text-slate-400">Router API</dt>
-                  <dd className="font-mono text-slate-200">
-                    {data.connections.router.hasApiKey ? 'Key Terpasang' : 'Tanpa Key'}
-                  </dd>
-                </div>
-                <div className="flex justify-between">
-                  <dt className="text-slate-400">Runtime Upstream</dt>
-                  <dd className="text-slate-200">{data.connections.runtime.endpoint ? 'Terkonfigurasi' : 'Opsional'}</dd>
-                </div>
-                <div className="flex justify-between">
-                  <dt className="text-slate-400">Supabase Storage Bucket</dt>
-                  <dd className="font-mono text-slate-200">{data.connections.supabase.bucket}</dd>
-                </div>
-              </dl>
-            )}
-            <Link
-              href="/settings/connections"
-              className="mt-4 inline-flex items-center gap-1.5 text-xs font-medium text-sky-300 hover:underline"
-            >
-              Buka Monitor Kesehatan Koneksi <ArrowRight className="h-3.5 w-3.5" />
-            </Link>
-          </div>
-
-          <div className="glass-panel rounded-2xl p-5">
-            <h2 className="flex items-center gap-2 text-sm font-semibold text-white">
-              <Shield className="h-4 w-4 text-indigo-400" /> Keamanan & Batas Eksekusi
-            </h2>
-            {data && (
-              <dl className="mt-4 space-y-2 text-xs">
-                <div className="flex justify-between">
-                  <dt className="text-slate-400">Masa Aktif Sesi</dt>
-                  <dd className="text-slate-200">{data.limits.sessionTtlHours} jam</dd>
-                </div>
-                <div className="flex justify-between">
-                  <dt className="text-slate-400">Maks. Tool Call / Turn</dt>
-                  <dd className="text-slate-200">{data.limits.maxToolCallsPerTurn}</dd>
-                </div>
-                <div className="flex justify-between">
-                  <dt className="text-slate-400">Timeout Eksekusi Tool</dt>
-                  <dd className="text-slate-200">{data.limits.toolExecutionTimeoutMs / 1000} detik</dd>
-                </div>
-                <div className="flex justify-between">
-                  <dt className="text-slate-400">Maks. Arsip Skill ZIP</dt>
-                  <dd className="text-slate-200">
-                    {Math.round(data.limits.maxSkillArchiveBytes / (1024 * 1024))} MB
-                  </dd>
-                </div>
-              </dl>
-            )}
-            <button
-              type="button"
-              onClick={handleLogoutAll}
-              className="mt-4 inline-flex items-center gap-1.5 rounded-xl bg-rose-500/15 px-3.5 py-2 text-xs font-medium text-rose-200 hover:bg-rose-500/25"
-            >
-              <LogOut className="h-3.5 w-3.5" /> Keluar dari Semua Sesi
-            </button>
-          </div>
-        </div>
-
-        <div className="glass-panel rounded-2xl p-5">
-          <h2 className="text-sm font-semibold text-white">Log Aktivitas Terbaru (Teredaksi)</h2>
-          <div className="mt-3 space-y-1.5">
-            {audit.length === 0 ? (
-              <p className="text-xs text-slate-400">Belum ada catatan aktivitas.</p>
-            ) : (
-              audit.slice(0, 12).map((ev) => (
-                <div key={ev.id} className="flex items-center justify-between rounded-xl bg-white/[0.03] px-3 py-2 text-xs">
-                  <span className="font-mono text-sky-200">{ev.event_type}</span>
-                  <span className="text-slate-400">{new Date(ev.created_at).toLocaleString('id-ID')}</span>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-      </div>
-    </AppShell>
-  );
+  return <AppShell title="Pengaturan"><div className="mx-auto max-w-3xl space-y-5">
+    <header><h1 className="text-2xl font-semibold">Pengaturan</h1><p className="mt-1 text-sm text-[var(--muted)]">{settings?.workspaceName ?? 'Workspace pribadi'}</p></header>
+    {(settingsError || auditError) && <button type="button" className={action} onClick={() => { setSettingsError(false); setAuditError(false); setAttempt((n) => n + 1); }}>Muat ulang data</button>}
+    <section className="glass-card space-y-3 rounded-xl p-4"><h2 className="font-semibold">Koneksi</h2>
+      {settingsError ? <p role="alert">Konfigurasi koneksi gagal dimuat.</p> : settings ? <dl className="grid gap-2 text-sm"><div><dt>Router API</dt><dd className="text-[var(--muted)]">{settings.connections.router.hasApiKey ? 'API key terpasang' : 'API key belum terpasang'}</dd></div><div><dt>Supabase</dt><dd className="break-words text-[var(--muted)]">{settings.connections.supabase.configured ? `Terkonfigurasi · ${settings.connections.supabase.bucket}` : 'Belum dikonfigurasi'}</dd></div></dl> : <p role="status">Memuat konfigurasi…</p>}
+      <Link href="/settings/connections" className={action}>Lihat status koneksi</Link>
+    </section>
+    <section className="glass-card space-y-3 rounded-xl p-4"><h2 className="font-semibold">Sesi dan batas penggunaan</h2>
+      {settings && <dl className="grid gap-2 text-sm sm:grid-cols-2"><div><dt>Masa aktif sesi</dt><dd>{settings.limits.sessionTtlHours} jam</dd></div><div><dt>Maksimum tool per giliran</dt><dd>{settings.limits.maxToolCallsPerTurn}</dd></div><div><dt>Batas waktu tool</dt><dd>{settings.limits.toolExecutionTimeoutMs / 1000} detik</dd></div><div><dt>Batas arsip skill</dt><dd>{(settings.limits.maxSkillArchiveBytes / 1048576).toLocaleString('id-ID')} MiB</dd></div></dl>}
+      {confirming ? <div className="space-y-2"><p className="text-sm">Semua sesi aktif akan dicabut, termasuk sesi ini.</p><div className="flex flex-wrap gap-2"><button type="button" className={`${action} text-rose-300`} disabled={busy} onClick={() => void logoutAll()}>{busy ? 'Mencabut sesi…' : 'Ya, cabut semua sesi'}</button><button type="button" className={action} disabled={busy} onClick={() => { setConfirming(false); setLogoutError(false); }}>Batal</button></div></div> : <button type="button" className={action} onClick={() => setConfirming(true)}>Keluar dari semua sesi</button>}
+      {logoutError && <p role="alert" className="text-rose-300">Sesi gagal dicabut. Coba lagi.</p>}
+    </section>
+    <section className="glass-card space-y-3 rounded-xl p-4"><h2 className="font-semibold">Aktivitas terbaru</h2>
+      {auditError ? <p role="alert">Log aktivitas gagal dimuat.</p> : !audit ? <p role="status">Memuat aktivitas…</p> : !audit.length ? <p>Belum ada aktivitas.</p> : <ul className="divide-y divide-[var(--line)]">{audit.slice(0, 12).map((event) => <li key={event.id} className="flex flex-wrap justify-between gap-x-4 gap-y-1 py-2 text-sm"><span className="break-all">{event.event_type}</span><time className="text-[var(--muted)]" dateTime={event.created_at}>{new Date(event.created_at).toLocaleString('id-ID')}</time></li>)}</ul>}
+    </section>
+  </div></AppShell>;
 }
